@@ -49,12 +49,24 @@ what you may remember (`middleware` is `proxy`, `next lint` is gone). Leave the 
 - `DESIGN.md` — the design system: fixed palette, type, components, the art layers.
 - `docs/figma/` — the Figma push tooling and screen inventories.
 
-Order of authority: **PRD → product-owner answers → code.**
+**Mirrored from the backend** (`fertility-grove-backend`, `dev`) by `yarn sync:docs` — read-only
+inputs, never edit them here; the next sync overwrites them:
+- `docs/prd/prd.md` — the PRD as the backend team keeps it, and `docs/prd/implementation-plan.md`.
+- `docs/api/api-handoff.md` — the backend integration guide: endpoints, DTOs, enums, validation,
+  edge cases, and what is not built yet, one section per feature.
+- `docs/api/swagger.json` — the OpenAPI spec from the running API (api.fertilitygrove.click), the
+  source of truth for request/response shapes.
+
+Order of authority: **PRD → product-owner answers → code.** If the `.docx` and `docs/prd/prd.md`
+disagree, ask which one wins (a PO question) rather than picking one.
 
 **Working documents, one per audience** (rules → `handoff-docs`; guarded by `src/docs-rules.test.ts`,
 each check skipped while its file does not exist): `docs/fe-tasks.md` (for us, temporary — delete each
 task when done, the file when empty) · `docs/po-questions.md` (for the PO, plain words; no ids, `§`
-references, codes or endpoints) · `docs/backend-tasks.md` (`B<n>` backend / `O<n>` ops asks).
+references, codes or endpoints; `Q<n>`) · `docs/backend-tasks.md` (`B<n>` backend / `O<n>` ops asks,
+each opening with the PO's answer when there is one; the backend hands back by updating
+`api-handoff.md` on `dev`, which `yarn sync:docs` pulls). Numbers are never reused; each file's header
+holds the next free one.
 
 ## Commands
 
@@ -74,6 +86,7 @@ yarn test:watch      # Vitest watch mode
 yarn test:coverage   # Vitest with V8 coverage
 yarn test:e2e        # Playwright E2E (specs in tests/) — boots its own server on :3100
 yarn test:e2e:ui     # Playwright UI mode
+yarn sync:docs       # Pull the contract docs in docs/prd + docs/api from the backend (scripts/sync-docs.sh)
 ```
 
 - Before calling work done: `yarn typecheck && yarn lint && yarn test`, plus `yarn test:e2e` for

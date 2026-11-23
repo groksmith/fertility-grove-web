@@ -137,6 +137,26 @@ Skipped as not applicable:
 - `slides`, `banner-design`, `brandkit`: they produce decks and marketing assets.
 - `ask-sonner`: there is no toast library; toasts are hand-built.
 
+## Docs from the backend
+
+```bash
+yarn sync:docs   # pull the contract docs from fertility-grove-backend (dev) + swagger.json
+```
+
+`scripts/sync-docs.sh` copies an allowlist from the backend repo's `docs/` (`prd.md`,
+`implementation-plan.md` → `docs/prd/`, `api-handoff.md` → `docs/api/`) and fetches `swagger.json`
+from the running API. They are read-only inputs, not files to edit here. The script never deletes
+and fails loudly if the backend renames a file. Override with `./scripts/sync-docs.sh <branch>` or
+`REMOTE=… SWAGGER_URL=…`.
+
+Working with the backend team and the PO happens in two files, as in pharos-web (rules in
+`.claude/skills/handoff-docs/SKILL.md`):
+
+- `docs/backend-tasks.md` — numbered asks for the backend (`B<n>`) and ops (`O<n>`). The backend
+  hands back by updating `api-handoff.md` on `dev`; we pull it with `yarn sync:docs`.
+- `docs/po-questions.md` — questions for the Product Owner, in plain words (`Q<n>`), only where the
+  spec is silent, unclear or contradicts itself.
+
 ## Quality checks
 
 ```bash
