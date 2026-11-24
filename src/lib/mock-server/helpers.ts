@@ -1,24 +1,12 @@
 /* What every mock endpoint shares: the result shape, ids, the confirmed-email gate, notifications and
    Sunlight. Feature services call these where the backend will do the same work server-side. */
 
-import type { CrisisLevel } from "@/lib/rules/crisis";
+import { fail, type Result } from "@/lib/api/result";
 import { keepLevel, levelIndex } from "@/lib/rules/sunlight";
 import { MSG } from "@/lib/rules/validation";
 import { get, type State } from "./db";
 
-export type Result =
-  | { ok: true; id?: string; crisis?: CrisisLevel; note?: string }
-  | { ok: false; error: string; code?: "unconfirmed" | "join" | "credits" };
-
-export const ok = (extra: Omit<Extract<Result, { ok: true }>, "ok"> = {}): Result => ({
-  ok: true,
-  ...extra,
-});
-export const fail = (error: string, code?: "unconfirmed" | "join" | "credits"): Result => ({
-  ok: false,
-  error,
-  code,
-});
+export { fail, ok, type Result } from "@/lib/api/result";
 
 let seq = 0;
 export const uid = (p: string) => `${p}-${Date.now().toString(36)}-${(seq++).toString(36)}`;

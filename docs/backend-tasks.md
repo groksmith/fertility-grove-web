@@ -5,10 +5,184 @@
 **How to hand back:** merge to `dev` and **regenerate `docs/api-handoff.md`** (the running API
 serves `swagger.json`). We pull both with `yarn sync:docs`; anything not in them reads as not done.
 
-Numbers are never reused. None are used yet. The next new ask is **B1** / **O1**.
+The next new ask is **B13** / **O2**.
 
 Rules for this file: `.claude/skills/handoff-docs/SKILL.md`.
 
 ---
 
-No asks are open right now.
+## O1 — Staging database is missing a migration
+
+`GET /api/v1/public/groups` on staging (api.fertilitygrove.click) answers 500
+`Npgsql.PostgresException: 42703: column g.visible_to_guests does not exist` (seen 2026-11-23). The
+guest pages (`/community`, `/community/{id}`) and the signed-out redirect to a public group read it.
+
+**Ask:** apply the pending migrations on staging (the Guest browsing release added
+`groups.visible_to_guests`). Also: unhandled 500s return the exception text and stack in
+`exceptionDetails`; production should not.
+
+**Today:** the web app shows its own "Something went wrong" sentence instead of the exception text.
+
+**FE follow-up when shipped:** none.
+
+## B1 — Avatar background colour and an avatar catalogue
+
+PRD §5/§6 (v1.2): a member picks an avatar background colour (Green, Coral, Yellow, Blue, Pink,
+Purple; Green by default) and optionally one of 12 preset avatars. The API has only an opaque
+`avatarCode` (`PUT /profile/me`, `PUT /onboarding/profile`) and its examples use `"leaf-3"`.
+
+**Ask:** either (a) agree that `avatarCode` is the web app's own `"<colour>"` or
+`"<colour>:<preset index 0–11>"` (e.g. `"coral:3"`) and document it in the handoff, or (b) add
+`avatarBackground` (enum of the six colours) and a documented preset code list.
+
+**Today:** the web app writes `"<colour>"` / `"<colour>:<index>"` and reads anything else as Green
+with the member's initial.
+
+**FE follow-up when shipped:** map the agreed fields in `src/lib/api/members.ts`.
+
+## B2 — Change password while signed in
+
+PRD §15 (Settings → Account): "Change password" with current password, new password and confirm,
+signing out other devices. There is no endpoint; only forgot / reset by email exists.
+
+**Ask:** `PUT /api/v1/auth/password` `{ currentPassword, newPassword, confirmNewPassword }` → 204;
+400 "That password isn't right." (counts toward lockout like sign-in); 422 for the PRD password rule;
+ends every other session.
+
+**Today:** the Settings form validates and shows its confirmation, but changes nothing (prototype).
+
+**FE follow-up when shipped:** call it from `src/app/(dashboard)/settings/page.tsx` (`pwSaved`).
+
+## B3 — Author avatar and badges on posts, comments and conversations
+
+PRD §6: wherever a member appears (post, comment, message), they show with their avatar on its
+background colour and their badges. `PostSummaryViewModel`, `CommentViewModel` and
+`VisitorPostViewModel` carry the author's display name, handle and tree level but no `avatarCode`
+(posts/comments) and no badge (posts/comments).
+
+**Ask:** add `authorAvatarCode` and `authorBadge` ("Mentor" | "Founding mentor" | null) to post and
+comment summaries (member and visitor variants).
+
+**Today:** authors on posts and comments show their initial on Green and no badge, unless the same
+member was already loaded elsewhere (a profile, a match, a conversation).
+
+**FE follow-up when shipped:** read the two fields in `src/lib/api/content.ts` (`authorOf`).
+
+## B4 — A member's posts on their profile
+
+PRD §6: a member's public profile shows their posts (those in groups the viewer can read).
+`GET /api/v1/members/{handle}` has no posts and there is no list endpoint for them.
+
+**Ask:** `GET /api/v1/members/{handle}/posts?page&pageSize` → `PostListViewModel`, with the same
+visibility rules as the feed (no Members-only groups the viewer hasn't joined, nothing held/removed).
+
+**Today:** the profile shows only that member's posts the app already loaded (feed, groups).
+
+**FE follow-up when shipped:** a `useMemberPosts` hook on `src/app/(dashboard)/u/[handle]/page.tsx`.
+
+## B5 — Who an invite link belongs to
+
+PRD §10/§24: the invite page says "{Name} invited you to the Fertility Grove beta". `GET
+/auth/sign-up-status?inviteCode=` says whether the code is valid, but not whose it is.
+
+**Ask:** add `inviterDisplayName` (the member's display identity, never the real name unless they
+show it) to `GetSignUpStatusViewModel` when `inviteCode` is valid.
+
+**Today:** the invite page says "A member invited you…".
+
+**FE follow-up when shipped:** read it in `src/app/(public)/invite/[code]/page.tsx`.
+
+## B6 — The links in the confirm-email and reset-password emails
+
+The handoff documents the frontend routes the notification and deletion emails link to, but not the
+confirmation and reset links.
+
+**Ask:** document (and keep) these formats: `{frontend}/confirm-email?token={token}` and
+`{frontend}/reset-password?email={email}&token={token}` (the token URL-encoded).
+
+**Today:** the web app reads exactly those query parameters (`token`, and `email` for reset).
+
+**FE follow-up when shipped:** adjust the two pages if the formats differ.
+
+## B7 — "Sign out of all devices" keeps this device
+
+PRD §4 criterion 7 and §15: "every **other** session is signed out". The handoff doesn't say whether
+`POST /auth/sign-out-everywhere` also ends the session that called it.
+
+**Ask:** end every session except the caller's (or return fresh tokens), and document it.
+
+**Today:** the web app assumes the caller's session ends too, and sends the member to sign-in.
+
+**FE follow-up when shipped:** stay signed in and show "Signed out of every other device".
+
+## B8 — "Message" vs "message request" before sending
+
+PRD §14: a first message to someone who doesn't follow you (and whose setting is "Members I follow")
+arrives as a request, and the composer says so before sending ("Write your message request").
+`GET /members/{handle}` has `canMessage` but not whether it would be a request.
+
+**Ask:** add `messageMode: "Open" | "Request" | "None"` to `GetMemberProfileViewModel`.
+
+**Today:** any member with `canMessage: true` gets the ordinary composer; the API's
+`awaitingAcceptance` then marks the conversation as a sent request.
+
+**FE follow-up when shipped:** `messageService.canStart` in `src/features/messages/service.ts`.
+
+## B9 — Features the web app still runs on local sample data
+
+These screens exist and keep working on browser-only data until their endpoints exist (the handoff
+lists them as not built). Listed so nothing is lost; each needs its own contract when it starts.
+
+- **Moderation (M4):** report a post, comment, message or profile; appeal a removal; suspension
+  status and appeal (`/suspended`).
+- **Grove Guide (M8):** chats, answers with citations, ratings, appointment question lists.
+- **Credits (M10):** balance, monthly refill, packs, checkout and purchase history.
+- **Family space (M10):** shared items, family notes with versions, activity.
+- **Support inbox:** the conversation with the Fertility Grove team.
+
+**Today:** all of the above are local (marked `TODO(api)` in the code).
+
+**FE follow-up when shipped:** one service each, replacing the local store in that feature.
+
+## B10 — "No source" on posts and comments
+
+PRD §9 (v1.2): Source is optional, "No source" is the default, and a post without one shows no source
+label anywhere (card, post page, public link). `CreatePostCommand`, `EditPostCommand`,
+`AddCommentCommand` and `EditCommentCommand` require `source` (`ContentSource` has no "none"), and
+summaries always return one.
+
+**Ask:** make `source` nullable on those four commands and on `PostSummaryViewModel`,
+`CommentViewModel`, `VisitorPostViewModel` and `PublicPostViewModel`; `null` means no source.
+
+**Today:** a post or comment written without a source is sent as `PersonalExperience`, so it shows a
+"Personal experience" label it shouldn't.
+
+**FE follow-up when shipped:** send and read `null` in `src/lib/api/enums.ts` (`apiSource`, `source`).
+
+## B11 — "Who it's for" on groups
+
+PRD §8: "Each group page shows who the group is for in one line, so members know if it fits them",
+and the public group page shows it too (§10, Guest browsing). The group endpoints have `description`
+but no such line.
+
+**Ask:** add `whoFor` (up to 120 characters, set by admins) to `GetGroupViewModel`,
+`GroupListItemViewModel` and `VisitorGroupViewModel`.
+
+**Today:** the line is empty on group pages.
+
+**FE follow-up when shipped:** map it in `src/lib/api/content.ts` (`toGroup`).
+
+## B12 — Profile photo upload
+
+PRD §5 (screen 6) and §6: "Profile photo · Upload from my computer. Location data is removed from
+photos", shown on the profile, posts, comments and messages. There is no upload endpoint and no
+photo URL on any member view model.
+
+**Ask:** `POST /api/v1/profile/me/photo` (multipart, image; strip EXIF/location; size and type limits
+documented), `DELETE /api/v1/profile/me/photo`, and `photoUrl` wherever `avatarCode` is returned.
+
+**Today:** "Upload from my computer" says photo upload isn't available yet.
+
+**FE follow-up when shipped:** the upload control on onboarding screen 6 and Edit profile, and
+`photoUrl` in `src/lib/api/members.ts` and `Avatar`.
+

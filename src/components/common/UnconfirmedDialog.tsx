@@ -21,7 +21,7 @@ export function UnconfirmedDialog({ open, onClose }: { open: boolean; onClose: (
         <Button
           variant="secondary"
           onClick={() => {
-            authService.resendLink();
+            void authService.resendLink();
             setSent(true);
           }}
         >

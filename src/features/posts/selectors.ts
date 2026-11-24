@@ -1,11 +1,9 @@
 /* Derived views the screens read: pure functions of the mock server's state. */
 
 import { NO_DOWNVOTE } from "@/config/options";
-import { journey, person } from "@/features/auth";
+import { person } from "@/features/auth";
 import type { State } from "@/lib/mock-server";
-import { articleBySlug } from "@/lib/mock-server/seed/articles";
 import { groupOpenToGuests, guestCanRead, publicAuthor, publicPostState } from "@/lib/rules/guests";
-import { matchGroups } from "@/lib/rules/matching";
 import type { Comment, Group, Member, Post } from "@/types/domain";
 
 export const score = (x: { up: number; down: number }) => x.up - x.down;
@@ -33,8 +31,7 @@ export function feed(
   },
 ) {
   const base = visiblePosts(s);
-  const commentsOf = (id: string) =>
-    s.comments.filter((c) => c.postId === id && c.status === "published").length;
+  const commentsOf = (id: string) => commentCount(s, id);
   let items: { post: Post; matched?: string }[];
   if (opts.tab === "following") {
     items = base
@@ -48,17 +45,12 @@ export function feed(
     items = base
       .filter((p) => s.joined.includes(p.groupId) || p.authorId === "me")
       .map((post) => ({ post }));
-    // Up to 3 a day from matched groups the member hasn't joined, never Members-only.
-    const matchedIds = matchGroups(journey(s), s.groups, s.notForMe, 5)
-      .filter((m) => !s.joined.includes(m.group.id) && m.group.readAccess === "any")
-      .map((m) => m.group);
-    const extra = base
-      .filter((p) => matchedIds.some((g) => g.id === p.groupId))
-      .slice(0, 3)
-      .map((post) => ({
-        post,
-        matched: `From ${s.groups.find((g) => g.id === post.groupId)?.name}, a group matched to you`,
-      }));
+    // Up to 3 a day from matched groups the member hasn't joined (GET /matches/posts).
+    const extra = (s.matchedPosts ?? [])
+      .map((m) => ({ post: base.find((p) => p.id === m.postId), matched: m.reason }))
+      .filter((m): m is { post: Post; matched: string } => !!m.post)
+      .filter((m) => !items.some((i) => i.post.id === m.post.id))
+      .slice(0, 3);
     items = [...items, ...extra];
   }
   if (opts.groups.length) items = items.filter((i) => opts.groups.includes(i.post.groupId));
@@ -90,14 +82,20 @@ export function commentsFor(s: State, postId: string, sort: "top" | "newest") {
   }));
 }
 
-export const commentCount = (s: State, postId: string) =>
-  s.comments.filter((c: Comment) => c.postId === postId && c.status !== "deleted").length;
+/** The cached thread's count once it's loaded, else the count the API sent with the post. */
+export function commentCount(s: State, postId: string) {
+  const local = s.comments.filter(
+    (c: Comment) => c.postId === postId && c.status !== "deleted",
+  ).length;
+  const sent = s.posts.find((p) => p.id === postId)?.commentCount;
+  return local || sent || 0;
+}
 
 export function savedItems(s: State) {
   return {
     posts: s.posts.filter((p) => p.saved && p.status !== "deleted"),
     stories: s.stories.filter((x) => x.saved),
-    articles: s.savedArticles.map(articleBySlug).filter(Boolean),
+    articles: s.savedArticles.flatMap((id) => s.articles.filter((a) => a.slug === id)),
   };
 }
 

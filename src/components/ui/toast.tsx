@@ -1,5 +1,6 @@
 "use client";
 import { useSyncExternalStore } from "react";
+import { onNotice } from "@/lib/notice";
 
 /* ------------------------------------------------------------------ Toast */
 
@@ -22,6 +23,9 @@ export function toast(text: string) {
     for (const l of toastListeners) l();
   }, 3600);
 }
+
+// Messages raised outside React (a background save that failed) show here too.
+if (typeof window !== "undefined") onNotice(toast);
 
 const subToasts = (l: () => void) => {
   toastListeners.add(l);

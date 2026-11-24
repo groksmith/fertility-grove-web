@@ -13,16 +13,21 @@ import { MSG } from "@/lib/rules/validation";
 export default function ConfirmEmailPage() {
   const router = useRouter();
   const hydrated = useHydrated();
-  const { me, step, signedIn } = useStore();
+  const { me, step, signedIn, pendingEmail } = useStore();
   const [state, setState] = useState<"working" | "done" | "expired">("working");
   const [resent, setResent] = useState(false);
 
   useEffect(() => {
     if (!hydrated) return;
-    const r = authService.confirmEmail();
-    // The link's outcome is decided once, on arrival.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setState(r.ok ? "done" : "expired");
+    // The link's outcome is decided once, on arrival: POST /auth/verify-email with its token.
+    const token = new URLSearchParams(window.location.search).get("token") ?? "";
+    let live = true;
+    void authService.confirmEmail(token).then((r) => {
+      if (live) setState(r.ok ? "done" : "expired");
+    });
+    return () => {
+      live = false;
+    };
   }, [hydrated]);
 
   const next = !signedIn ? "/login" : step < 9 ? `/onboarding/${step}` : "/feed";
@@ -41,7 +46,7 @@ export default function ConfirmEmailPage() {
         ) : (
           <Button
             onClick={() => {
-              authService.resendLink();
+              void authService.resendLink(pendingEmail || me.email);
               setResent(true);
             }}
           >

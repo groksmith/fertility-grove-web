@@ -2,21 +2,27 @@ import type { NextConfig } from "next";
 
 const isDev = process.env.NODE_ENV !== "production";
 
+// The API origin the browser calls (`src/config/env.ts` reads the same variable).
+const apiOrigin = new URL(process.env.NEXT_PUBLIC_API_URL || "https://api.fertilitygrove.click")
+  .origin;
+// Google Identity Services: its script, its sign-in iframe and its token endpoint.
+const google = "https://accounts.google.com";
+
 // ⚠️ **Content-Security-Policy — every origin here is one the app really loads from; add, don't
 // widen.** A page that breaks after a change to this list is showing a CSP violation in the console.
-//   · The prototype has no backend and loads nothing from another origin: fonts are self-hosted by
-//     `next/font`, and every image and film is under `public/assets/`. So `connect-src` is this
-//     origin only; when the API lands, add its origin there (and nowhere wider).
+//   · Fonts are self-hosted by `next/font`, and every image and film is under `public/assets/`.
+//     `connect-src` adds exactly the API origin (from NEXT_PUBLIC_API_URL) and Google sign-in.
 //   · `'unsafe-inline'` on scripts is a known gap, not an oversight: Next's hydration payload is
 //     inline, and a nonce would make every page dynamically rendered.
 //   · Dev only: `'unsafe-eval'` (React Refresh) and `ws:` for hot reload.
 const contentSecurityPolicy = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
-  "style-src 'self' 'unsafe-inline'",
+  `script-src 'self' 'unsafe-inline' ${google}/gsi/client${isDev ? " 'unsafe-eval'" : ""}`,
+  `style-src 'self' 'unsafe-inline' ${google}/gsi/style`,
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
-  `connect-src 'self'${isDev ? " ws:" : ""}`,
+  `connect-src 'self' ${apiOrigin} ${google}/gsi/${isDev ? " ws:" : ""}`,
+  `frame-src ${google}/gsi/`,
   "media-src 'self' blob:",
   "worker-src 'self' blob:",
   "object-src 'none'",
@@ -69,6 +75,13 @@ const nextConfig: NextConfig = {
     return [
       { source: "/home", destination: "/feed", permanent: false },
       { source: "/profile", destination: "/dashboard", permanent: false },
+      // Routes the API's emails link to (api-handoff: account deletion, notifications).
+      { source: "/sign-in", destination: "/login", permanent: false },
+      {
+        source: "/settings/notifications",
+        destination: "/settings#notifications",
+        permanent: false,
+      },
     ];
   },
 };

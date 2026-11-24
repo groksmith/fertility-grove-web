@@ -16,7 +16,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Toggle } from "@/components/ui/switch";
-import { authService, type SignUpInput, signUpSchema, signUpWaitlistSchema } from "@/features/auth";
+import {
+  authService,
+  type SignUpInput,
+  signUpSchema,
+  signUpWaitlistSchema,
+  useSignUpStatus,
+} from "@/features/auth";
 import { useHydrated, useStore } from "@/lib/mock-server";
 import { MSG } from "@/lib/rules/validation";
 
@@ -30,7 +36,9 @@ type SignUpResult = {
 export default function SignupPage() {
   const router = useRouter();
   const hydrated = useHydrated();
-  const { hasInvite, signupsPaused, invitedBy } = useStore();
+  const invitedBy = useStore((s) => s.invitedBy);
+  const status = useSignUpStatus();
+  const { hasInvite, isPaused: signupsPaused } = status;
   const [mode, setMode] = useState<"choose" | "google">("choose");
   /* One form behind both sign-up modes, so the answers carry over when switching; `google` says
      which mode is submitting. Checked on submit only: messages stay until the next submit (or a
@@ -57,11 +65,15 @@ export default function SignupPage() {
     form.clearErrors();
   };
 
-  const submit = form.handleSubmit((values) => {
-    const r = authService.signUp(values) as SignUpResult;
+  const submit = form.handleSubmit(async (values) => {
+    const r: SignUpResult = await authService.signUp(values);
     if (!r.ok) {
       for (const [name, message] of Object.entries(r.errs ?? {}))
         form.setError(name as keyof SignUpInput, { message });
+      if (r.error && !Object.keys(r.errs ?? {}).length)
+        form.setError((values.google ? "terms" : "email") as keyof SignUpInput, {
+          message: r.error,
+        });
       return;
     }
     if (values.google) {
@@ -71,7 +83,7 @@ export default function SignupPage() {
     setCheck({ email: values.email.trim(), duplicate: !!r.duplicate });
   });
 
-  if (!hydrated) return <div className="min-h-dvh bg-ground" />;
+  if (!hydrated || status.loading) return <div className="min-h-dvh bg-ground" />;
 
   if (check) {
     return (
@@ -92,7 +104,7 @@ export default function SignupPage() {
           <Button onClick={() => router.push(check.duplicate ? "/login" : "/onboarding/1")}>
             Continue
           </Button>
-          <Button variant="ghost" onClick={() => authService.resendLink()}>
+          <Button variant="ghost" onClick={() => void authService.resendLink(check.email)}>
             Resend link
           </Button>
         </div>
@@ -100,7 +112,7 @@ export default function SignupPage() {
     );
   }
 
-  if (!hasInvite) {
+  if (!hasInvite && !signupsPaused) {
     return (
       <AuthFrame title="Invite-only for now" step={5} lede={MSG.inviteOnly}>
         <p className="text-[15px] leading-relaxed text-ink-soft">
@@ -139,8 +151,11 @@ export default function SignupPage() {
           <form
             noValidate
             className="space-y-4"
-            onSubmit={waitForm.handleSubmit(({ email }) => {
-              if (email) setWaitDone(true);
+            onSubmit={waitForm.handleSubmit(async ({ email }) => {
+              if (!email) return;
+              const r = await authService.joinWaitlist(email);
+              if (r.ok) setWaitDone(true);
+              else waitForm.setError("email", { message: r.error });
             })}
           >
             <FormField

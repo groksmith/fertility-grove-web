@@ -1,148 +1,177 @@
-import { confirmed, fail, get, ok, type Result, set, uid } from "@/lib/mock-server";
+import { refresh } from "@/lib/api/query-client";
+import { crisisOf, fail, failure, ok, type Result } from "@/lib/api/result";
+import { get, set, uid } from "@/lib/mock-server";
+import { notice } from "@/lib/notice";
 import { detectCrisis } from "@/lib/rules/crisis";
 import { MSG } from "@/lib/rules/validation";
+import type { Conversation } from "@/types/domain";
+import { messagesApi } from "./api";
+import { messageKeys } from "./hooks";
 
 /* -------------------------------------------------------------- Messages */
 
+const isSupport = (id: string) => get().conversations.find((c) => c.id === id)?.kind === "support";
+const handleOf = (memberId: string) =>
+  get().members.find((m) => m.id === memberId)?.handle || memberId;
+
+async function quietly(run: () => Promise<unknown>, undo?: () => void): Promise<Result> {
+  try {
+    await run();
+    void refresh(messageKeys.all);
+    return ok();
+  } catch (error) {
+    undo?.();
+    const f = failure(error);
+    if (!f.ok) notice(f.error);
+    return f;
+  }
+}
+
+function patchConv(id: string, patch: (c: Conversation) => Conversation | null) {
+  set((s) => ({
+    ...s,
+    conversations: s.conversations.flatMap((c) => {
+      if (c.id !== id) return [c];
+      const next = patch(c);
+      return next ? [next] : [];
+    }),
+  }));
+}
+
 export const messageService = {
-  /** Who can message whom (PRD §14): a follow or "Anyone" opens a thread; any
-   *  other first message becomes a request; "No one" has no Message button. */
+  /** Who can message whom (PRD §14). The profile's `canMessage` decides; the first message to
+   *  someone who doesn't follow you arrives as a request (the API says so when it's sent). */
   canStart(memberId: string): "open" | "request" | "none" | "unavailable" {
     const s = get();
     const m = s.members.find((x) => x.id === memberId);
     if (!m) return "none";
     if (m.unavailable) return "unavailable";
+    if (m.canMessage === false) return "none";
+    if (m.canMessage === true) return "open";
     if (m.messagePolicy === "no-one") return "none";
     if (m.messagePolicy === "anyone" || m.follows.includes("me")) return "open";
     return "request";
   },
 
-  start(memberId: string, body: string, attachedPostId?: string): Result {
-    const gate = confirmed();
-    if (gate) return gate;
+  /** POST /members/{handle}/messages: opens (or continues) the conversation. */
+  async start(memberId: string, body: string, attachedPostId?: string): Promise<Result> {
     const s = get();
-    const existing = s.conversations.find((c) => c.memberId === memberId);
+    if (s.me.status === "unconfirmed") return fail(MSG.unconfirmed(s.me.email), "unconfirmed");
+    const existing = s.conversations.find((c) => c.memberId === memberId && c.kind !== "support");
     if (existing) {
-      const r = messageService.send(existing.id, body, attachedPostId);
+      const r = await messageService.send(existing.id, body, attachedPostId);
       return r.ok ? ok({ id: existing.id, crisis: r.crisis }) : r;
     }
-    const mode = messageService.canStart(memberId);
-    if (mode === "unavailable") return fail(MSG.cantReceive);
-    if (mode === "none") return fail("This member isn't taking messages.");
-    if (s.me.joinedDaysAgo < 7 && s.counters.newConversations >= 10)
-      return fail(MSG.conversationLimit);
     if (!body.trim() && !attachedPostId) return fail("Write a message first.");
-    const id = uid("cv");
-    const crisis = detectCrisis(body);
-    set((x) => ({
-      ...x,
-      counters: { ...x.counters, newConversations: x.counters.newConversations + 1 },
-      conversations: [
-        {
-          id,
-          memberId,
-          kind: "dm",
-          request: mode === "request" ? "outgoing" : undefined,
-          muted: false,
-          unread: false,
-          crisisFlagged: crisis !== "none",
-          messages: [
-            { id: uid("m"), from: "me", body: body.trim(), minutesAgo: 0, attachedPostId },
-          ],
-        },
-        ...x.conversations,
-      ],
-    }));
-    return ok({ id, crisis });
+    try {
+      const sent = await messagesApi.start(handleOf(memberId), body.trim(), attachedPostId);
+      void refresh(messageKeys.all);
+      return ok({ id: sent.data.conversationId, crisis: crisisOf(sent, sent.data) });
+    } catch (error) {
+      return failure(error);
+    }
   },
 
-  send(id: string, body: string, attachedPostId?: string): Result {
-    const gate = confirmed();
-    if (gate) return gate;
+  /** POST /conversations/{id}/messages. Messages are never held. */
+  async send(id: string, body: string, attachedPostId?: string): Promise<Result> {
     const s = get();
+    if (s.me.status === "unconfirmed") return fail(MSG.unconfirmed(s.me.email), "unconfirmed");
     const c = s.conversations.find((x) => x.id === id);
     if (!c) return fail("This conversation isn't available.");
-    if (c.request === "outgoing") {
-      const m = s.members.find((x) => x.id === c.memberId);
-      return fail(
-        `You can send more once ${m?.showRealName ? m.firstName : `@${m?.handle}`} accepts your message request.`,
-      );
-    }
     if (!body.trim() && !attachedPostId) return fail("Write a message first.");
     if (body.length > 5000) return fail("Messages can be up to 5,000 characters.");
-    const crisis = detectCrisis(body);
-    set((x) => ({
-      ...x,
-      conversations: [
-        {
-          ...c,
-          request: c.request === "incoming" ? undefined : c.request,
-          crisisFlagged: c.crisisFlagged || crisis !== "none",
-          messages: [
-            ...c.messages,
-            { id: uid("m"), from: "me", body: body.trim(), minutesAgo: 0, attachedPostId },
-          ],
-        },
-        ...x.conversations.filter((k) => k.id !== id),
-      ],
-    }));
-    return ok({ id, crisis });
+    if (c.kind === "support") return sendLocal(id, body, attachedPostId);
+    try {
+      const sent = await messagesApi.send(id, body.trim(), attachedPostId);
+      patchConv(id, (k) => ({
+        ...k,
+        request: k.request === "incoming" ? undefined : k.request,
+        messages: [
+          ...k.messages.filter((m) => !m.id.startsWith("preview-")),
+          { id: sent.data.id, from: "me", body: body.trim(), minutesAgo: 0, attachedPostId },
+        ],
+      }));
+      void refresh(messageKeys.all);
+      return ok({ id, crisis: crisisOf(sent, sent.data) });
+    } catch (error) {
+      return failure(error);
+    }
   },
 
+  /** POST /conversations/{id}/accept. */
   acceptRequest(id: string) {
-    set((s) => ({
-      ...s,
-      conversations: s.conversations.map((c) => (c.id === id ? { ...c, request: undefined } : c)),
-    }));
+    patchConv(id, (c) => ({ ...c, request: undefined }));
+    return quietly(() => messagesApi.accept(id));
   },
-  /** Deleting a request is silent: the sender is never told. */
+  /** DELETE /conversations/{id}: deleting a request is silent, the sender is never told. */
   deleteRequest(id: string) {
-    set((s) => ({ ...s, conversations: s.conversations.filter((c) => c.id !== id) }));
+    patchConv(id, () => null);
+    return quietly(() => messagesApi.remove(id));
   },
+  /** PUT /conversations/{id}/muted. */
   toggleMute(id: string) {
-    set((s) => ({
-      ...s,
-      conversations: s.conversations.map((c) => (c.id === id ? { ...c, muted: !c.muted } : c)),
-    }));
+    const muted = !!get().conversations.find((c) => c.id === id)?.muted;
+    patchConv(id, (c) => ({ ...c, muted: !muted }));
+    if (isSupport(id)) return Promise.resolve(ok());
+    return quietly(
+      () => messagesApi.mute(id, !muted),
+      () => patchConv(id, (c) => ({ ...c, muted })),
+    );
   },
+  /** DELETE /conversations/{id}: gone for me; the other member keeps theirs. */
   deleteForMe(id: string) {
-    set((s) => ({ ...s, conversations: s.conversations.filter((c) => c.id !== id) }));
+    const support = isSupport(id);
+    patchConv(id, () => null);
+    if (support) return Promise.resolve(ok());
+    return quietly(() => messagesApi.remove(id));
   },
+  /** POST /conversations/{id}/read. */
   markRead(id: string) {
-    set((s) => ({
-      ...s,
-      conversations: s.conversations.map((c) => (c.id === id ? { ...c, unread: false } : c)),
-    }));
+    patchConv(id, (c) => ({ ...c, unread: false }));
+    if (isSupport(id)) return Promise.resolve(ok());
+    return quietly(() => messagesApi.read(id));
   },
-  /** Edit and delete only within 15 minutes of sending. */
-  editMessage(convId: string, msgId: string, body: string) {
-    set((s) => ({
-      ...s,
-      conversations: s.conversations.map((c) =>
-        c.id === convId
-          ? {
-              ...c,
-              messages: c.messages.map((m) =>
-                m.id === msgId && m.minutesAgo <= 15 ? { ...m, body, edited: true } : m,
-              ),
-            }
-          : c,
-      ),
+  /** PUT /messages/{id}: within 15 minutes of sending. */
+  async editMessage(convId: string, msgId: string, body: string): Promise<Result> {
+    patchConv(convId, (c) => ({
+      ...c,
+      messages: c.messages.map((m) => (m.id === msgId ? { ...m, body, edited: true } : m)),
     }));
+    if (isSupport(convId)) return ok();
+    try {
+      const sent = await messagesApi.edit(msgId, body);
+      return ok({ crisis: crisisOf(sent, sent.data) });
+    } catch (error) {
+      void refresh(messageKeys.thread(convId));
+      const f = failure(error);
+      if (!f.ok) notice(f.error);
+      return f;
+    }
   },
+  /** DELETE /messages/{id}: within 15 minutes of sending. */
   deleteMessage(convId: string, msgId: string) {
-    set((s) => ({
-      ...s,
-      conversations: s.conversations.map((c) =>
-        c.id === convId
-          ? {
-              ...c,
-              messages: c.messages.map((m) =>
-                m.id === msgId && m.minutesAgo <= 15 ? { ...m, deleted: true, body: "" } : m,
-              ),
-            }
-          : c,
-      ),
+    patchConv(convId, (c) => ({
+      ...c,
+      messages: c.messages.map((m) => (m.id === msgId ? { ...m, deleted: true, body: "" } : m)),
     }));
+    if (isSupport(convId)) return Promise.resolve(ok());
+    return quietly(
+      () => messagesApi.removeMessage(msgId),
+      () => void refresh(messageKeys.thread(convId)),
+    );
   },
 };
+
+/** The support conversation is local (TODO(api): no support inbox endpoint yet). */
+function sendLocal(id: string, body: string, attachedPostId?: string): Result {
+  const crisis = detectCrisis(body);
+  patchConv(id, (c) => ({
+    ...c,
+    crisisFlagged: c.crisisFlagged || crisis !== "none",
+    messages: [
+      ...c.messages,
+      { id: uid("m"), from: "me", body: body.trim(), minutesAgo: 0, attachedPostId },
+    ],
+  }));
+  return ok({ id, crisis });
+}

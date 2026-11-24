@@ -94,18 +94,3 @@ export function inviteOwner(s: State, code: string): Member | undefined {
   if (s.me.inviteCode && s.me.inviteCode === code) return meAsMember(s);
   return undefined;
 }
-
-/* ----------------------------------------------------------------- Sign-up */
-
-/** Fertility Grove is invite-only while the beta runs (PRD §24). */
-const BETA_INVITE_ONLY = true;
-
-/** GET /api/v1/auth/sign-up-status. TODO(api): exists. */
-export function signUpStatus(s: State) {
-  return {
-    isPaused: s.signupsPaused,
-    isInviteOnly: BETA_INVITE_ONLY,
-    isInviteValid: false,
-    canSignUp: !s.signupsPaused && !BETA_INVITE_ONLY,
-  };
-}

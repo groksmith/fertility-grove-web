@@ -18,10 +18,10 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Avatar, EmptyState, PageHeader } from "@/components/shared";
+import { Avatar, EmptyState, MoreOnScroll, PageHeader } from "@/components/shared";
 import { Panel } from "@/components/ui/panel";
 import { person } from "@/features/auth";
-import { notificationService } from "@/features/notifications";
+import { notificationService, useNotifications } from "@/features/notifications";
 import { timeAgo } from "@/lib/format";
 import { useStore } from "@/lib/mock-server";
 import type { Notification, NotificationKind } from "@/types/domain";
@@ -74,11 +74,24 @@ function Row({ n, wasUnread }: { n: Notification; wasUnread: boolean }) {
 
 export default function NotificationsPage() {
   const notifications = useStore((s) => s.notifications);
-  const [unreadIds] = useState(() => notifications.filter((n) => !n.read).map((n) => n.id));
+  // GET /notifications, page by page; what it shows is then marked read (POST /notifications/read).
+  // The ones that were unread on arrival keep their highlight while the page is open, and the
+  // lede counts every unread one, on any page.
+  const query = useNotifications();
+  const [arrivedUnread, setArrivedUnread] = useState<string[]>([]);
+  const [newCount, setNewCount] = useState<number | null>(null);
+  const unreadIds = arrivedUnread;
 
   useEffect(() => {
-    notificationService.markAllRead();
-  }, []);
+    const pages = query.data?.pages;
+    if (!pages) return;
+    if (newCount === null) setNewCount(pages[0]?.unreadCount ?? 0);
+    const unread = pages.flatMap((p) => p.notifications.filter((n) => !n.isRead).map((n) => n.id));
+    const fresh = unread.filter((id) => !arrivedUnread.includes(id));
+    if (!fresh.length) return;
+    setArrivedUnread((ids) => [...ids, ...fresh]);
+    void notificationService.markAllRead();
+  }, [query.data, arrivedUnread, newCount]);
 
   const today = notifications.filter((n) => n.minutesAgo < 1440);
   const earlier = notifications.filter((n) => n.minutesAgo >= 1440);
@@ -88,8 +101,8 @@ export default function NotificationsPage() {
       <PageHeader
         title="Notifications"
         lede={
-          unreadIds.length
-            ? `${unreadIds.length} new since you last looked.`
+          (newCount ?? 0) > 0
+            ? `${newCount} new since you last looked.`
             : "Nothing new since you last looked."
         }
       />
@@ -116,6 +129,7 @@ export default function NotificationsPage() {
               </section>
             ) : null,
           )}
+          <MoreOnScroll query={query} />
           <p className="text-[13px] text-muted">
             We send at most one activity email a day. Choose what&apos;s in it in{" "}
             <Link href="/settings#notifications" className="underline">

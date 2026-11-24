@@ -16,11 +16,14 @@ MVP (PRD v2.0): a private community for people going through infertility and the
 covers the member app only; the moderator and admin panel (PRD §19–20) is out of scope. Output is
 `standalone`, deployed to AWS Lambda behind CloudFront.
 
-**There is no backend.** `src/lib/mock-server/` stands in for it: its database (`db.ts`, persisted
-to the browser's `localStorage`), seed data (`seed/`) and shared helpers. Each domain is a
-`src/features/<name>/` module whose `service.ts` reads and writes the mock server; every method marked
-`TODO(api)` becomes a request when the backend lands, and the screens that call it should not need to
-change.
+**The backend** (`fertility-grove-backend`, `api.fertilitygrove.click`, contract in `docs/api/`) serves
+auth, onboarding, profile and settings, groups, posts, stories, follows, matching, mentoring,
+messages, notifications, partners, Learn and guest browsing. Each domain is a
+`src/features/<name>/` module whose `service.ts` calls it through `@/lib/http`. What it doesn't
+serve yet — Grove Guide, credits, family space, moderation (reports, appeals, suspension), the
+support inbox — stays on the local store in `src/lib/mock-server/` (marked `TODO(api)`; tracked as
+`docs/backend-tasks.md` B9). That store is also the **client cache**: queries map API answers into
+its collections, so the approved screens and their selectors read the same shapes as before.
 
 ### Stack baseline (Nov 2026) — verify against package.json
 
@@ -30,7 +33,7 @@ change.
 | Language, lint | `typescript` 7.0 (`tsc --noEmit`, `strict` + `noUncheckedIndexedAccess`), `@biomejs/biome` 2.6 |
 | Styling | `tailwindcss` 4.3 + `@tailwindcss/postcss` |
 | UI | Own primitives in `components/ui` (**no shadcn**), `lucide-react` 1.x |
-| Data and forms | Feature services over the mock server (no TanStack Query or sonner yet), `react-hook-form` 7.92 + `@hookform/resolvers` 7 + `zod` 4.6 |
+| Data and forms | `@tanstack/react-query` 5 (cache-filling hooks over the store; no sonner), `react-hook-form` 7.92 + `@hookform/resolvers` 7 + `zod` 4.6 |
 | Tests | `vitest` 5 (+ `vite` 8, `jsdom` 29, Testing Library, fast-check, axe-core), `@playwright/test` 1.65 |
 | Runtime | Node 22 in dev and CI (22.13 locally — hence `jsdom` 29, not 30) |
 
@@ -117,8 +120,9 @@ into E2E (→ `toolchain`, `playwright-testing`).
 - **Component (Vitest + jsdom + Testing Library)** — opt in per file with
   `// @vitest-environment jsdom` on line 1; `axe-core` for a11y assertions. `vitest.setup.ts`
   registers Testing Library's cleanup.
-- **E2E (Playwright, `tests/`)** — `tests/public/` runs signed-out pages; `tests/app/` signs in by
-  picking a demo persona at `/demo` (state lives in that page's `localStorage`).
+- **E2E (Playwright, `tests/`)** — every spec answers `/api/v1/*` from `tests/fixtures/api.ts`
+  (`mockApi`, offline and fixed); `tests/public/` runs signed-out pages; `tests/app/` starts signed in
+  with `signIn(page)` (a stored session). Add a route's reads to the fixture when a page needs more.
   `*.responsive.spec.ts` run across mobile/tablet/desktop projects (all Chromium).
   `tests/fixtures/page-health.ts` fails a page on any console error, CSP violation, uncaught
   exception or missing asset.
@@ -142,10 +146,28 @@ README "Deployment" → `toolchain`, `perf`.
 
 ## Backend API Conventions
 
-**None yet** — the prototype has no backend. When one lands, fill this in from its API guide and adopt
-the kit's defaults (→ `http`, `auth`, `tanstack`, `forms`): `httpClient` / `serverHttpClient` under
-`/api/v1`, RFC 7807 ProblemDetails mapped once at the HTTP layer, bearer + refresh tokens with one
-refresh in flight, `requireSession()` as the gate. Until then those skills are reference only.
+Source of truth: `docs/api/swagger.json` (shapes) and `docs/api/api-handoff.md` (rules, wording).
+
+- **Client:** `httpClient` (`src/lib/http/client.ts`) under `${NEXT_PUBLIC_API_URL}/api/v1`. Bearer
+  access + refresh tokens (`lib/http/tokens.ts`: localStorage with "Keep me signed in", else
+  sessionStorage), one refresh in flight, a dead refresh ends the session. `/auth/*` calls send
+  cookies (the HttpOnly `device_id`); nothing else does. Server layouts use plain `fetch` to the
+  public endpoints (`features/*/server.ts`).
+- **Errors:** RFC 7807 → `ApiRequestError` once, in the client; show `errorMessage(e)` (the API's
+  `detail`, never an exception's text). Services fold every outcome into the screens' `Result`
+  (`lib/api/result.ts`: `attempt`, `failure`, `crisisOf`); field errors ride in `errs`.
+- **Account-wide gates**, routed centrally: 403 `TERMS_NOT_ACCEPTED` → `/accept-terms?v=…`, 403
+  `ONBOARDING_INCOMPLETE` → `/onboarding/{nextStep}`, `EMAIL_NOT_CONFIRMED` → the confirm-email
+  dialog. Calls the gate itself makes pass `noGateRedirect`.
+- **Crisis:** `X-Show-Crisis-Resources` (any response) or `showCrisisResources` / `heldForReview` →
+  `Result.crisis` for the screen; `CrisisWatch` (shell, onboarding) shows the card for saves no
+  screen handles.
+- **Session:** `features/auth/session.ts` `loadSession()` fills `me`, the step, follows, joined
+  groups and the partner link from `/auth/me`, `/onboarding`, `/profile/me/*`; the member layout
+  waits for `session !== "loading"`. Writes re-run it (or `refresh(keys)` for queries).
+- **Mapping:** API enums ↔ PRD words in `lib/api/enums.ts`; option codes ↔ labels in
+  `lib/api/options.ts` (from `GET /onboarding/options`); people by handle (`lib/api/members.ts`);
+  posts, comments, groups (`lib/api/content.ts`); articles (`lib/api/articles.ts`).
 
 ## Architecture
 
@@ -170,7 +192,9 @@ src/
     art/                # The brand's painted art (tree, scenes, cosy layer) — leaf files, by path
   hooks/                # Cross-cutting React hooks (useCopy, useMounted) — no domain
   lib/
-    mock-server/        # The backend stand-in: db.ts (state + useStore), seed/, helpers.ts
+    http/               # The API client: client.ts, errors.ts, tokens.ts
+    api/                # DTO → domain mappers, the cache hook, the query client, Result helpers
+    mock-server/        # The client store (db.ts: state + useStore) and the not-yet-backed features' data
     rules/              # PRD rules as pure functions — never the mock server's state
     format.ts  hue.ts  navigation-guard.ts   # domain-agnostic helpers
   config/               # Catalog constants and sample values (options.ts)
@@ -193,23 +217,26 @@ and session — excepted); import a feature through its barrel, except the serve
 is static data). **Enforced by `src/architecture.test.ts`** — fix a failure by moving code, never by
 widening the table (→ `architecture-review`).
 
-**Feature module** (→ `scaffold`; deviations from the kit's five files are deliberate while there is
-no backend):
+**Feature module** (→ `scaffold`; deviations from the kit are deliberate, see below):
 
 ```
 src/features/<name>/
   schema.ts     # Zod 4 form schemas (messages from @/lib/rules/validation, word for word) + z.input types
   types.ts      # the shapes it returns — re-exports its part of @/types/domain
-  service.ts    # export const <name>Service = { … } over the mock server (TODO(api) → httpClient)
-  selectors.ts  # pure derived views of the state (feed, unread counts, matches…)
+  api.ts        # the endpoints as typed httpClient calls + their DTOs
+  hooks.ts      # TanStack queries that map answers into the store's cache (useCachedQuery)
+  service.ts    # export const <name>Service = { … }: writes, each resolving to a Result
+  selectors.ts  # pure derived views of the cached state (feed, unread counts, matches…)
   server.ts     # optional: server-safe reads for server layouts (generateMetadata)
   index.ts      # barrel — named re-exports
 ```
 
-No `hooks.ts` yet: screens read state with `useStore` from `@/lib/mock-server`, the stand-in for
-TanStack Query's cache. When the backend lands, each service body becomes an `httpClient` call, a
-`hooks.ts` (TanStack Query) replaces `useStore` + selectors, `lib/mock-server` is deleted and nothing
-outside `features/` changes. No `actions.ts`, no Server Actions: mutations go screen → service.
+Screens call a feature's hook for what they show (`useFeed(sort)`, `usePost(id)`…), then read the
+store with `useStore` + selectors as before: `useCachedQuery` (`lib/api/query.ts`) merges each answer
+into the store (`lib/api/cache.ts`: `upsert`, `merge`, `replaceWhere`), so the approved screens didn't
+change. Services refresh what a write changed with `refresh(keys)` (`lib/api/query-client.ts`). A
+page whose data hasn't arrived renders nothing (not its "isn't available" state) while the query is
+pending. No `actions.ts`, no Server Actions: mutations go screen → service.
 
 **Import conventions:**
 
@@ -340,8 +367,9 @@ From the kit (`.claude/skills/`):
 | observability | Error boundaries, logger, error reporting, retry, error UX | ui-validate | Reviewing UI against the design-system, dialog, responsive and a11y rules |
 | perf | Measurement, Cache Components, React Compiler, bundles, images, cold start |  |  |
 
-**Partly dormant until the backend lands:** `scaffold` and `forms` apply (feature modules, RHF + Zod +
-FormField) except their TanStack/httpClient parts; `auth`, `http` and `tanstack` are reference only;
+**Adapted to this project:** `scaffold`, `forms`, `http`, `auth` and `tanstack` apply, read through
+"Backend API Conventions" above (hooks fill the store's cache rather than being read directly; no
+`requireSession()`/proxy gate — the member layout gates on the loaded session; no sonner);
 `shadcn-ui` doesn't apply (own primitives in `components/ui`).
 
 Third-party skills (vendored by the kit — sources and licences in the kit's `README.md`):
@@ -366,7 +394,7 @@ Instrument fonts, semantic tokens only, our own `components/ui` primitives (no s
 judgement (motion, polish, edge cases, UX review), not their house style.
 
 Project agents (`.claude/agents/`, from the kit) — spawn via the Agent tool for deep or parallel work.
-The same project rules bind them; `auth`, `data` and `http` are dormant until the backend:
+The same project rules bind them (the backend conventions above win over the agents' defaults):
 
 | Agent | Domain | Agent | Domain |
 |---|---|---|---|

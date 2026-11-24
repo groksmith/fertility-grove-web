@@ -1,6 +1,16 @@
 // Barrel: named re-exports of what other layers consume.
 
 export {
+  postKeys,
+  useFeed,
+  useFollowingFeed,
+  useGroupPosts,
+  useMyContent,
+  usePost,
+  useSaved,
+} from "./hooks";
+export { usePublicFeed, usePublicGroup, usePublicGroups, usePublicPost } from "./public";
+export {
   type CommentInput,
   type CreatePostInput,
   commentSchema,

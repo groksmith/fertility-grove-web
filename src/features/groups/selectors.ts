@@ -1,8 +1,14 @@
-/* Derived views the screens read: pure functions of the mock server's state. */
+/* Derived views the screens read: pure functions of the cached state. */
 
-import { journey } from "@/features/auth";
 import type { State } from "@/lib/mock-server";
-import { matchGroups } from "@/lib/rules/matching";
+import type { Group } from "@/types/domain";
 
-export const groupMatches = (s: State, limit = 5) =>
-  matchGroups(journey(s), s.groups, s.notForMe, limit);
+/** The matched groups GET /matches/groups returned (load them with `useGroupMatches`). */
+export const groupMatches = (s: State, limit = 5): { group: Group; why: string }[] =>
+  (s.matchedGroups ?? [])
+    .filter((m) => !s.notForMe.includes(m.groupId))
+    .flatMap((m) => {
+      const group = s.groups.find((g) => g.id === m.groupId);
+      return group ? [{ group, why: m.why }] : [];
+    })
+    .slice(0, limit);

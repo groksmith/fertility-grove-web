@@ -6,13 +6,16 @@
 
 import { Bookmark, MessageSquare, MoreHorizontal } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Name } from "@/components/common/Person";
 import { Avatar, SourceLabel, TagChip, TypeChip, VoteControl } from "@/components/shared";
+import { Button } from "@/components/ui/button";
 import { Menu } from "@/components/ui/dropdown-menu";
 import { Panel } from "@/components/ui/panel";
 import { toast } from "@/components/ui/toast";
 import { displayName, person } from "@/features/auth";
+import { groupService } from "@/features/groups";
 import { allowsDownvote, collapsed, commentCount, postService } from "@/features/posts";
 import { socialService } from "@/features/social";
 import { useCopy } from "@/hooks/useCopy";
@@ -31,6 +34,7 @@ export function PostCard({
   showGroup?: boolean;
 }) {
   const s = useStore();
+  const router = useRouter();
   const author = person(s, post.authorId);
   const group = s.groups.find((g) => g.id === post.groupId);
   const [reveal, setReveal] = useState(false);
@@ -58,7 +62,24 @@ export function PostCard({
 
   return (
     <Panel as="article" className="relative p-5 sm:p-6">
-      {matched && <p className="mb-3 text-[13px] font-semibold text-green-ink">{matched}</p>}
+      {matched && (
+        // A post from a matched group the member hasn't joined: why, and Join group (PRD §11).
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-[13px] font-semibold text-green-ink">{matched}</p>
+          {!s.joined.includes(group.id) && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                void groupService.toggleJoin(group.id);
+                toast(`Joined ${group.name}`);
+              }}
+            >
+              Join group
+            </Button>
+          )}
+        </div>
+      )}
       {post.status === "held" && (
         <p className="mb-3 rounded-[10px] bg-yellow-tint px-3 py-2 text-[13px] text-[var(--yellow-700)]">
           Held for a moment while our team checks in. Only you can see it.
@@ -132,6 +153,16 @@ export function PostCard({
                   },
                 ]
               : [
+                  // Message the author (PRD §14), unless they can't receive messages.
+                  ...(author.handle && !author.unavailable && !author.badges.includes("team")
+                    ? [
+                        {
+                          label: `Message ${displayName(author)}`,
+                          onSelect: () =>
+                            router.push(`/messages?to=${encodeURIComponent(author.id)}`),
+                        },
+                      ]
+                    : []),
                   "divider" as const,
                   { label: "Report post", onSelect: () => setReport(true) },
                   {

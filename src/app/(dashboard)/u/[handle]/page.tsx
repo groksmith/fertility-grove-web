@@ -20,10 +20,10 @@ import { Menu } from "@/components/ui/dropdown-menu";
 import { Panel } from "@/components/ui/panel";
 import { toast } from "@/components/ui/toast";
 import { displayName } from "@/features/auth";
-import { mentorRequestSchema, mentorService } from "@/features/mentors";
+import { mentorRequestSchema, mentorService, useMentorships } from "@/features/mentors";
 import { messageService } from "@/features/messages";
 import { visiblePosts } from "@/features/posts";
-import { socialService } from "@/features/social";
+import { socialService, useMember } from "@/features/social";
 import { useStore } from "@/lib/mock-server";
 import { MSG } from "@/lib/rules/validation";
 import type { Member } from "@/types/domain";
@@ -52,9 +52,9 @@ function RequestMentor({
     <Dialog open={open} onClose={onClose} title={`Ask ${displayName(mentor)} to mentor you`}>
       <form
         className="space-y-5"
-        onSubmit={form.handleSubmit(({ message, helpWith }) => {
+        onSubmit={form.handleSubmit(async ({ message, helpWith }) => {
           if (message.length > 500) return setError("Messages can be up to 500 characters.");
-          const r = mentorService.request(mentor.id, message, helpWith);
+          const r = await mentorService.request(mentor.id, message, helpWith);
           if (!r.ok && r.code !== "unconfirmed") return setError(r.error);
           if (handle(r, "Request sent. We'll let you know when they reply.")) onClose();
         })}
@@ -109,14 +109,18 @@ export default function MemberPage() {
   const s = useStore();
   const [report, setReport] = useState(false);
   const [asking, setAsking] = useState(false);
-  const member = s.members.find((m) => m.handle === handle);
   const isMe = handle === s.me.handle;
+  // GET /members/{handle}, into the member cache this page reads.
+  const query = useMember(isMe ? "" : (handle ?? ""));
+  useMentorships();
+  const member = s.members.find((m) => m.handle === handle);
 
   useEffect(() => {
     if (isMe) router.replace("/dashboard");
   }, [isMe, router]);
 
   if (isMe) return null;
+  if (query.isPending && !member?.followers) return null;
   if (!member || member.unavailable || s.blocked.includes(member.id)) {
     return (
       <EmptyState

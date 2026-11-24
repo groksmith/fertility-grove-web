@@ -4,7 +4,7 @@
    right response: the confirm-email dialog, a toast, or crisis resources. */
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { UnconfirmedDialog } from "@/components/common/UnconfirmedDialog";
 import { CrisisCard } from "@/components/shared";
@@ -17,7 +17,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
 import { REPORT_REASONS } from "@/config/options";
 import { reportSchema, socialService } from "@/features/social";
+import { onCrisisSignal } from "@/lib/http";
 import type { Result } from "@/lib/mock-server";
+import { crisisRecentlyHandled, markCrisisHandled } from "@/lib/notice";
 
 export function ReportDialog({
   open,
@@ -157,16 +159,27 @@ export function ReportDialog({
 export function useResult() {
   const [gate, setGate] = useState(false);
   const [crisis, setCrisis] = useState<"signal" | "high" | null>(null);
-  const handle = useCallback((r: Result, success?: string) => {
+  const settle = useCallback((r: Result, success?: string) => {
     if (!r.ok) {
       if (r.code === "unconfirmed") setGate(true);
       else toast(r.error);
       return false;
     }
-    if (r.crisis && r.crisis !== "none") setCrisis(r.crisis);
-    else if (success) toast(success);
+    if (r.crisis && r.crisis !== "none") {
+      markCrisisHandled();
+      setCrisis(r.crisis);
+    } else if (success) toast(success);
     return true;
   }, []);
+  /* An action resolves to its Result once the API answers; a votes-and-saves fire and forget. */
+  const handle = useCallback(
+    ((r: Result | Promise<Result>, success?: string) =>
+      r instanceof Promise ? r.then((x) => settle(x, success)) : settle(r, success)) as {
+      (r: Result, success?: string): boolean;
+      (r: Promise<Result>, success?: string): Promise<boolean>;
+    },
+    [settle],
+  );
   const ui = (
     <>
       <UnconfirmedDialog open={gate} onClose={() => setGate(false)} />
@@ -185,4 +198,28 @@ export function useResult() {
     </>
   );
   return { handle, ui };
+}
+
+/** Any response that asks for the crisis resources (X-Show-Crisis-Resources) opens the card, unless
+ *  the screen already showed it for its own action. Mounted once by the app shell and onboarding. */
+export function CrisisWatch() {
+  const [open, setOpen] = useState(false);
+  useEffect(
+    () =>
+      onCrisisSignal(() => {
+        window.setTimeout(() => {
+          if (!crisisRecentlyHandled()) setOpen(true);
+        }, 400);
+      }),
+    [],
+  );
+  return (
+    <Dialog open={open} onClose={() => setOpen(false)} title="You're not alone">
+      <p className="mb-4 text-[15px] leading-relaxed text-ink-soft">
+        It sounds like things are really hard right now. Your words were shared as usual, and our
+        team will see them. If you need to talk to someone now:
+      </p>
+      <CrisisCard />
+    </Dialog>
+  );
 }

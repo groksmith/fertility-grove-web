@@ -1,23 +1,16 @@
 "use client";
-
-/* A post and its conversation (PRD §9, §10). Comments sort Top by default,
-   replies go one level deep, and a reply to a reply attaches to the same
-   comment and mentions the person replied to. */
-
-import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, BadgeCheck, Bookmark, MoreHorizontal, Reply } from "lucide-react";
+import { ArrowLeft, BadgeCheck, Bookmark, MoreHorizontal } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
-import { Controller, useForm } from "react-hook-form";
 import { GroupCover } from "@/components/art/Brand";
+import { CommentComposer, CommentItem } from "@/components/common/Comments";
 import { Name } from "@/components/common/Person";
 import { PostVisibility } from "@/components/common/PostVisibility";
 import { ReportDialog, useResult } from "@/components/common/Safety";
 import {
   Avatar,
   EmptyState,
-  FormField,
   SourceLabel,
   TagChip,
   TypeChip,
@@ -30,281 +23,23 @@ import { Counter, Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { Segmented } from "@/components/ui/segmented";
-import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
-import { SOURCES } from "@/config/options";
 import { displayName, person } from "@/features/auth";
 import { groupService } from "@/features/groups";
 import {
   allowsDownvote,
   collapsed,
   commentCount,
-  commentSchema,
   commentsFor,
   postService,
+  usePost,
 } from "@/features/posts";
 import { socialService } from "@/features/social";
 import { useCopy } from "@/hooks/useCopy";
 import { timeAgo } from "@/lib/format";
 import { useStore } from "@/lib/mock-server";
-import type { Comment, Group, Post } from "@/types/domain";
-
-function CommentComposer({
-  post,
-  parent,
-  mention,
-  onDone,
-  autoFocus,
-}: {
-  post: Post;
-  parent?: string;
-  mention?: string;
-  onDone?: () => void;
-  autoFocus?: boolean;
-}) {
-  // The error shows on a refused submit and stays until a reply is posted (a later submit the
-  // service turns down keeps it); nothing takes focus.
-  const [error, setError] = useState<string>();
-  const form = useForm({
-    resolver: zodResolver(commentSchema),
-    defaultValues: { body: "", source: "" as const },
-    reValidateMode: "onSubmit",
-    shouldFocusError: false,
-  });
-  const { handle, ui } = useResult();
-  return (
-    <form
-      onSubmit={form.handleSubmit(
-        ({ body, source }) => {
-          const r = postService.comment(post.id, body, {
-            parentId: parent,
-            mention,
-            source: source || undefined,
-          });
-          if (handle(r, "Reply posted")) {
-            form.reset();
-            setError(undefined);
-            onDone?.();
-          }
-        },
-        (errs) => setError(errs.body?.message),
-      )}
-      className="space-y-3"
-    >
-      <FormField
-        form={form}
-        name="body"
-        label={mention ? `Reply to @${mention}` : "Add a comment"}
-        kind="textarea"
-        counterMax={2000}
-        hint={
-          post.type === "Support needed"
-            ? "They asked for support, not advice. A kind word goes a long way."
-            : post.type === "Just venting"
-              ? "They're not asking for advice. Let them know they're heard."
-              : undefined
-        }
-        rows={3}
-        autoFocus={autoFocus}
-        controlClassName="min-h-20"
-        error={error}
-      />
-      <div className="flex flex-wrap items-end gap-3">
-        {/* biome-ignore lint/a11y/noLabelWithoutControl: the label wraps the shared <Select>, which renders a native <select>, so it is implicitly associated; Biome cannot see through the component */}
-        <label className="min-w-0 flex-1 sm:max-w-64">
-          <span className="mb-1.5 block text-[13px] text-muted">Source (optional)</span>
-          <Controller
-            control={form.control}
-            name="source"
-            render={({ field }) => (
-              <Select
-                ref={field.ref}
-                name={field.name}
-                value={field.value}
-                onChange={field.onChange}
-                onBlur={field.onBlur}
-                className="h-10 text-[14px]"
-              >
-                <option value="">No source</option>
-                {SOURCES.filter((x) => x !== "Clinician input").map((x) => (
-                  <option key={x}>{x}</option>
-                ))}
-              </Select>
-            )}
-          />
-        </label>
-        <Button type="submit">{parent ? "Reply" : "Comment"}</Button>
-        {onDone && (
-          <Button variant="ghost" onClick={onDone}>
-            Cancel
-          </Button>
-        )}
-      </div>
-      {ui}
-    </form>
-  );
-}
-
-function CommentItem({
-  c,
-  post,
-  canTakePart,
-  reply,
-}: {
-  c: Comment;
-  post: Post;
-  canTakePart: boolean;
-  reply?: boolean;
-}) {
-  const s = useStore();
-  const author = person(s, c.authorId);
-  const [replying, setReplying] = useState(false);
-  const [reveal, setReveal] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(c.body);
-  const [report, setReport] = useState(false);
-  const { handle, ui } = useResult();
-  if (!author) return null;
-  const mine = c.authorId === "me";
-
-  if (c.status === "deleted") {
-    return <p className="py-3 text-[14px] text-muted">This comment was deleted.</p>;
-  }
-
-  return (
-    <div className={`flex gap-3 py-4 ${c.minutesAgo === 0 ? "rise" : ""}`}>
-      <Avatar member={author} size={reply ? 30 : 36} />
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[14px]">
-          <Name member={author} pronouns={false} />
-          <span className="text-muted">· {timeAgo(c.minutesAgo)}</span>
-          {c.edited && <span className="text-muted">· Edited</span>}
-        </div>
-        {collapsed(c) && !reveal ? (
-          <p className="mt-2 text-[14px] text-muted">
-            Hidden because members voted it down.{" "}
-            <button
-              type="button"
-              onClick={() => setReveal(true)}
-              className="font-semibold text-ink underline"
-            >
-              Show hidden content
-            </button>
-          </p>
-        ) : editing ? (
-          <div className="mt-2 space-y-2">
-            <Textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              rows={3}
-              max={2000}
-              hardStop
-              aria-label="Edit comment"
-            />
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                onClick={() => {
-                  postService.editComment(c.id, draft.trim());
-                  setEditing(false);
-                }}
-                disabled={!draft.trim()}
-              >
-                Save
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
-                Cancel
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <p className="mt-1.5 text-[15px] leading-relaxed whitespace-pre-line text-ink">
-            {c.mention && <span className="font-semibold text-accent">@{c.mention} </span>}
-            {c.body}
-          </p>
-        )}
-        {c.status === "held" && (
-          <p className="mt-2 text-[13px] text-[var(--yellow-700)]">
-            Held for a moment while our team checks in. Only you can see it.
-          </p>
-        )}
-        <div className="mt-2.5 flex flex-wrap items-center gap-2">
-          <VoteControl
-            compact
-            up={c.up}
-            down={c.down}
-            my={c.myVote}
-            allowDown={allowsDownvote(post)}
-            disabled={mine}
-            onVote={(v) => handle(postService.voteComment(c.id, v))}
-          />
-          {canTakePart && (
-            <Button size="sm" variant="ghost" onClick={() => setReplying((v) => !v)}>
-              <Reply size={15} /> Reply
-            </Button>
-          )}
-          {c.source && <SourceLabel source={c.source} />}
-          <span className="flex-1" />
-          <Menu
-            label="Comment options"
-            trigger={(p) => (
-              <button
-                {...p}
-                type="button"
-                aria-label="Comment options"
-                className="press grid h-9 w-9 place-items-center rounded-full text-muted hover:bg-raised hover:text-ink"
-              >
-                <MoreHorizontal size={18} />
-              </button>
-            )}
-            items={
-              mine
-                ? [
-                    { label: "Edit", onSelect: () => setEditing(true) },
-                    {
-                      label: "Delete",
-                      danger: true,
-                      onSelect: () => postService.removeComment(c.id),
-                    },
-                  ]
-                : [
-                    { label: "Report comment", onSelect: () => setReport(true) },
-                    {
-                      label: `Block ${displayName(author)}`,
-                      danger: true,
-                      onSelect: () => {
-                        socialService.block(author.id);
-                        toast("Blocked");
-                      },
-                    },
-                  ]
-            }
-          />
-        </div>
-        {replying && (
-          <div className="mt-3">
-            <CommentComposer
-              post={post}
-              parent={c.parentId ?? c.id}
-              mention={author.id === "me" ? undefined : author.handle}
-              onDone={() => setReplying(false)}
-              autoFocus
-            />
-          </div>
-        )}
-      </div>
-      <ReportDialog
-        open={report}
-        onClose={() => setReport(false)}
-        target={c.id}
-        what="comment"
-        authorId={author.id}
-      />
-      {ui}
-    </div>
-  );
-}
+import type { Group, Post } from "@/types/domain";
 
 function EditPost({ post, group, onDone }: { post: Post; group: Group; onDone: () => void }) {
   const [title, setTitle] = useState(post.title);
@@ -375,8 +110,11 @@ export default function PostPage() {
   const [reveal, setReveal] = useState(false);
   const [, copy] = useCopy();
   const { handle, ui } = useResult();
+  // GET /posts/{id} with its thread, into the cache this page reads.
+  const query = usePost(id, sort);
 
   const post = s.posts.find((p) => p.id === id);
+  const loading = query.isPending && !post?.body;
   const group = post && s.groups.find((g) => g.id === post.groupId);
   const author = post && person(s, post.authorId);
   const visible =
@@ -385,6 +123,7 @@ export default function PostPage() {
       post.status === "deleted" ||
       (post.status === "held" && post.authorId === "me"));
 
+  if (loading) return null;
   if (!post || !group || !author || !visible || s.blocked.includes(post.authorId)) {
     return (
       <EmptyState
@@ -502,6 +241,19 @@ export default function PostPage() {
                           },
                         ]
                       : [
+                          // Message the author (PRD §14), unless they can't receive messages.
+                          ...(author.handle &&
+                          !author.unavailable &&
+                          !author.badges.includes("team")
+                            ? [
+                                {
+                                  label: `Message ${displayName(author)}`,
+                                  onSelect: () =>
+                                    router.push(`/messages?to=${encodeURIComponent(author.id)}`),
+                                },
+                                "divider" as const,
+                              ]
+                            : []),
                           { label: "Report post", onSelect: () => setReport(true) },
                           {
                             label: `Block ${displayName(author)}`,

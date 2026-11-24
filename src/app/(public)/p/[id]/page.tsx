@@ -15,18 +15,18 @@ import { JoinBlock, PublicByline, useGuestAction } from "@/components/common/Gue
 import { EmptyState, SourceLabel, TypeChip, VoteControl } from "@/components/shared";
 import { LinkButton } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
-import { allowsDownvote, publicPost } from "@/features/posts";
+import { allowsDownvote, usePublicPost } from "@/features/posts";
 import { plural } from "@/lib/format";
-import { useStore } from "@/lib/mock-server";
 import { groupOpenToGuests } from "@/lib/rules/guests";
 
 export default function PublicPostPage() {
   const { id } = useParams<{ id: string }>();
-  const s = useStore();
   const { ask, ui } = useGuestAction();
-  // TODO(api): the public post endpoint (GET, no sign-in).
-  const item = publicPost(s, id);
+  // GET /public/posts/{id} (no sign-in).
+  const query = usePublicPost(id);
+  const item = query.data;
 
+  if (query.isPending) return null;
   if (!item) {
     return (
       <ReadingFrame title="Fertility Grove">

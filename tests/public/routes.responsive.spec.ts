@@ -1,8 +1,15 @@
 import { expect, test } from "@playwright/test";
 
+import { mockApi } from "../fixtures/api";
+
 // Responsive smoke — runs on the mobile / tablet / desktop projects (see playwright.config.ts). The
 // same assertions execute at each form factor, catching horizontal overflow on the entry points
 // without a per-viewport loop inside the test.
+
+// The API is answered by the fixtures (tests/fixtures/api.ts): the guest pages read it too.
+test.beforeEach(async ({ page }) => {
+  await mockApi(page);
+});
 
 for (const route of ["/", "/login", "/signup", "/community"]) {
   test(`${route} has no horizontal overflow`, async ({ page }) => {

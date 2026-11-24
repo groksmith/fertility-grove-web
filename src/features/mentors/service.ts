@@ -1,52 +1,42 @@
-/* The mentors endpoints. There is no backend yet: each method reads or writes the mock server and
-   returns what the API returns (or will). A body that becomes a request is marked TODO(api). */
+/* Mentoring (PRD §12): ask a mentor, answer a request, end, leave feedback, and the mentor setup
+   (on, paused, off). Each write waits for the API, then re-reads the mentorships. */
 
-import { confirmed, fail, get, ok, type Result, type State, set, uid } from "@/lib/mock-server";
-import { detectCrisis } from "@/lib/rules/crisis";
+import { DIAGNOSES, JOURNEY_STAGES, PATHS } from "@/config/options";
+import { loadSession } from "@/features/auth";
+import { codeOf } from "@/lib/api/options";
+import { refresh } from "@/lib/api/query-client";
+import { attempt, crisisOf, fail, failure, ok, type Result } from "@/lib/api/result";
+import { get, set } from "@/lib/mock-server";
+import { notice } from "@/lib/notice";
 import { MSG } from "@/lib/rules/validation";
+import { mentorsApi } from "./api";
+import { mentorKeys } from "./hooks";
 
-/* --------------------------------------------------------------- Mentors */
+const after = () => refresh(mentorKeys.mentorships, ["conversations"], ["dashboard"]);
+
+const inList = (list: readonly string[], v: string) => list.includes(v);
 
 export const mentorService = {
-  request(mentorId: string, message: string, helpWith: string[]): Result {
-    const gate = confirmed();
-    if (gate) return gate;
-    if (!message.trim()) return fail(MSG.mentorMessage);
+  /** POST /members/{handle}/mentor-requests. */
+  async request(mentorId: string, message: string, helpWith: string[]): Promise<Result> {
     const s = get();
-    const mine = s.mentorRequests.filter((r) => r.menteeId === "me");
-    if (mine.some((r) => r.status === "waiting")) return fail(MSG.mentorOpenRequest);
-    if (mine.filter((r) => r.status === "accepted").length >= 2) return fail(MSG.mentorTwo);
-    const crisis = detectCrisis(message);
-    const id = uid("mr");
-    set((x) => ({
-      ...x,
-      mentorRequests: [
-        ...x.mentorRequests,
-        {
-          id,
-          mentorId,
-          menteeId: "me",
-          message: message.trim(),
-          helpWith,
-          status: "waiting",
-          daysAgo: 0,
-        },
-      ],
-      members: x.members.map((m) =>
-        m.id === mentorId && m.mentor
-          ? { ...m, mentor: { ...m.mentor, waiting: m.mentor.waiting + 1 } }
-          : m,
-      ),
-    }));
-    return ok({ id, crisis });
+    if (s.me.status === "unconfirmed") return fail(MSG.unconfirmed(s.me.email), "unconfirmed");
+    if (!message.trim()) return fail(MSG.mentorMessage);
+    const handle = s.members.find((m) => m.id === mentorId)?.handle ?? mentorId;
+    try {
+      const sent = await mentorsApi.request(handle, message.trim(), helpWith.map(codeOf));
+      void after();
+      return ok({ id: sent.data.id, crisis: crisisOf(sent, sent.data) });
+    } catch (error) {
+      return failure(error);
+    }
   },
 
-  /** A mentor's reply to a request sent to me. */
-  respond(id: string, accept: boolean, note: string) {
-    set((s) => {
-      const r = s.mentorRequests.find((x) => x.id === id);
-      if (!r) return s;
-      const next: State = {
+  /** POST /mentorships/{id}/answer. Accepting opens the mentoring conversation. */
+  async respond(id: string, accept: boolean, note: string): Promise<Result> {
+    try {
+      const sent = await mentorsApi.answer(id, accept, note.trim());
+      set((s) => ({
         ...s,
         mentorRequests: s.mentorRequests.map((x) =>
           x.id === id
@@ -57,54 +47,76 @@ export const mentorService = {
               }
             : x,
         ),
-      };
-      if (!accept) return next;
-      return {
-        ...next,
-        conversations: [
-          {
-            id: uid("cv"),
-            memberId: r.menteeId,
-            kind: "mentoring",
-            muted: false,
-            unread: false,
-            messages: [
-              { id: uid("m"), from: "them", body: r.message, minutesAgo: r.daysAgo * 1440 },
-              ...(note.trim()
-                ? [{ id: uid("m"), from: "me" as const, body: note.trim(), minutesAgo: 0 }]
-                : []),
-            ],
-          },
-          ...next.conversations,
-        ],
-      };
-    });
+      }));
+      void after();
+      return ok({ crisis: crisisOf(sent) });
+    } catch (error) {
+      const f = failure(error);
+      if (!f.ok) notice(f.error);
+      return f;
+    }
   },
 
-  end(requestId: string) {
+  /** POST /mentorships/{id}/end. */
+  async end(requestId: string): Promise<Result> {
+    const r = await attempt(() => mentorsApi.end(requestId));
+    if (!r.ok) {
+      notice(r.error);
+      return r;
+    }
     set((s) => ({
       ...s,
-      mentorRequests: s.mentorRequests.map((r) =>
-        r.id === requestId ? { ...r, status: "ended" } : r,
+      mentorRequests: s.mentorRequests.map((x) =>
+        x.id === requestId ? { ...x, status: "ended" } : x,
       ),
     }));
+    void after();
+    return r;
   },
 
-  feedback(requestId: string) {
+  /** PUT /mentorships/{id}/feedback: helpful yes / somewhat / no, and an optional thank-you. */
+  async feedback(
+    requestId: string,
+    helpful: "Yes" | "Somewhat" | "No" = "Yes",
+    thanks = "",
+  ): Promise<Result> {
+    const r = await attempt(() => mentorsApi.feedback(requestId, helpful, thanks.trim()));
+    if (!r.ok) {
+      notice(r.error);
+      return r;
+    }
     set((s) => ({
       ...s,
-      mentorRequests: s.mentorRequests.map((r) =>
-        r.id === requestId ? { ...r, feedbackGiven: true } : r,
+      mentorRequests: s.mentorRequests.map((x) =>
+        x.id === requestId ? { ...x, feedbackGiven: true } : x,
       ),
     }));
+    return r;
   },
 
+  /** POST /matches/Mentor/{memberId}/not-for-me: that mentor isn't suggested again. */
+  async notForMe(mentorId: string): Promise<Result> {
+    const apiId = get().members.find((m) => m.id === mentorId)?.apiId;
+    set((s) => ({
+      ...s,
+      notForMe: [...s.notForMe, mentorId],
+      matchedMentors: s.matchedMentors?.filter((m) => m.id !== mentorId),
+    }));
+    if (!apiId) return ok();
+    const r = await attempt(() => mentorsApi.notForMe(apiId));
+    if (!r.ok) notice(r.error);
+    return r;
+  },
+
+  /** PUT /profile/me/mentoring. Checked here first, so the setup guard gets its answer at once;
+      a refusal from the API (bio crisis words, say) arrives as a toast. */
   setup(m: { bio: string; helpsWith: string[]; capacity: number; agreed: boolean }) {
     const errs: Record<string, string> = {};
     if (!m.bio.trim()) errs.bio = MSG.mentorBio;
     if (!m.helpsWith.length) errs.helpsWith = MSG.mentorHelps;
     if (!m.agreed) errs.agreed = MSG.mentorGuidelines;
     if (Object.keys(errs).length) return { ok: false as const, errs };
+    const before = get().me.mentoring;
     set((s) => ({
       ...s,
       me: {
@@ -118,23 +130,53 @@ export const mentorService = {
         },
       },
     }));
+    void mentorsApi
+      .setup({
+        bio: m.bio.trim(),
+        diagnoses: m.helpsWith.filter((h) => inList(DIAGNOSES, h)).map(codeOf),
+        journeyStages: m.helpsWith.filter((h) => inList(JOURNEY_STAGES, h)).map(codeOf),
+        paths: m.helpsWith.filter((h) => inList(PATHS, h)).map(codeOf),
+        capacity: m.capacity,
+        acceptGuidelines: m.agreed,
+      })
+      .then(() => loadSession())
+      .catch((error: unknown) => {
+        set((s) => ({ ...s, me: { ...s.me, mentoring: before } }));
+        const f = failure(error);
+        if (!f.ok) notice(f.error);
+      });
     return { ok: true as const, errs: {} };
   },
 
-  setPaused(paused: boolean) {
+  /** PUT /profile/me/mentoring/paused. */
+  async setPaused(paused: boolean): Promise<Result> {
     set((s) => ({ ...s, me: { ...s.me, mentoring: { ...s.me.mentoring, paused } } }));
+    const r = await attempt(() => mentorsApi.pause(paused));
+    if (!r.ok) {
+      set((s) => ({ ...s, me: { ...s.me, mentoring: { ...s.me.mentoring, paused: !paused } } }));
+      notice(r.error);
+    }
+    return r;
   },
 
-  /** Turning mentoring off declines waiting requests with the default note. */
-  turnOff() {
+  /** DELETE /profile/me/mentoring: waiting requests are declined with the default note. */
+  async turnOff(): Promise<Result> {
+    const r = await attempt(() => mentorsApi.turnOff());
+    if (!r.ok) {
+      notice(r.error);
+      return r;
+    }
     set((s) => ({
       ...s,
       me: { ...s.me, mentoring: { ...s.me.mentoring, on: false } },
-      mentorRequests: s.mentorRequests.map((r) =>
-        r.mentorId === "me" && r.status === "waiting"
-          ? { ...r, status: "declined", note: MSG.mentorDecline }
-          : r,
+      mentorRequests: s.mentorRequests.map((x) =>
+        x.mentorId === "me" && x.status === "waiting"
+          ? { ...x, status: "declined", note: MSG.mentorDecline }
+          : x,
       ),
     }));
+    void after();
+    await loadSession();
+    return r;
   },
 };

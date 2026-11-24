@@ -12,7 +12,7 @@ import { EmptyState, PageHeader } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { toast } from "@/components/ui/toast";
-import { groupMatches, groupService } from "@/features/groups";
+import { groupMatches, groupService, useGroupMatches, useGroups } from "@/features/groups";
 import { plural } from "@/lib/format";
 import { hueInk } from "@/lib/hue";
 import { useStore } from "@/lib/mock-server";
@@ -94,6 +94,9 @@ function GroupRow({ group, why }: { group: Group; why?: string }) {
 
 export default function GroupsPage() {
   const s = useStore();
+  // GET /groups and GET /matches/groups, into the cache this page reads.
+  useGroups();
+  useGroupMatches("GroupsPage");
   const [q, setQ] = useState("");
   const matches = groupMatches(s, 5);
   const matchedIds = matches.map((m) => m.group.id);

@@ -33,6 +33,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { HeaderBackdrop, sceneFor } from "@/components/art/Cozy";
 import { TreeGlyph } from "@/components/art/Tree";
+import { CrisisWatch } from "@/components/common/Safety";
 import { useSignOut } from "@/components/common/SignOut";
 import { Logo, LogoOrange } from "@/components/icons/Logo";
 import { Avatar } from "@/components/shared";
@@ -40,8 +41,8 @@ import { Menu } from "@/components/ui/dropdown-menu";
 import { Toaster } from "@/components/ui/toast";
 import { COMMUNITIES } from "@/config/options";
 import { authService, displayName, meAsMember } from "@/features/auth";
-import { unreadMessages } from "@/features/messages";
-import { unreadNotifications } from "@/features/notifications";
+import { unreadMessages, useConversations } from "@/features/messages";
+import { unreadNotifications, useUnreadCount } from "@/features/notifications";
 import { searchSchema } from "@/features/search";
 import { type State, useStore } from "@/lib/mock-server";
 
@@ -562,7 +563,7 @@ function UnconfirmedBanner() {
           type="button"
           className="underline underline-offset-2"
           onClick={() => {
-            authService.resendLink();
+            void authService.resendLink();
             setSent(true);
           }}
         >
@@ -579,6 +580,9 @@ function UnconfirmedBanner() {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const scene = sceneFor(path);
+  // The badges: the bell's unread count and the conversations list, polled (no push yet).
+  useUnreadCount();
+  useConversations({ refetchInterval: 60_000 });
   return (
     <div className="min-h-dvh">
       <a
@@ -603,6 +607,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </main>
       <GuideButton />
+      <CrisisWatch />
       <Toaster />
     </div>
   );

@@ -13,7 +13,7 @@ import { Controller, useForm, useWatch } from "react-hook-form";
 import { Spot } from "@/components/art/Scenes";
 import { Name } from "@/components/common/Person";
 import { ReportDialog, useResult } from "@/components/common/Safety";
-import { Avatar, EmptyState } from "@/components/shared";
+import { Avatar, EmptyState, MoreOnScroll } from "@/components/shared";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Menu } from "@/components/ui/dropdown-menu";
@@ -22,9 +22,14 @@ import { Panel } from "@/components/ui/panel";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
 import { displayName, person } from "@/features/auth";
-import { mentorService } from "@/features/mentors";
-import { messageSchema, messageService } from "@/features/messages";
-import { socialService } from "@/features/social";
+import { mentorService, useMentorships } from "@/features/mentors";
+import {
+  messageSchema,
+  messageService,
+  useConversation,
+  useConversations,
+} from "@/features/messages";
+import { socialService, useMember } from "@/features/social";
 import { timeAgo } from "@/lib/format";
 import { type State, useStore } from "@/lib/mock-server";
 import { MSG } from "@/lib/rules/validation";
@@ -53,6 +58,12 @@ function ConversationList({ activeId, s }: { activeId: string | null; s: State }
   const [q, setQ] = useState("");
   const requests = s.conversations.filter((c) => c.request === "incoming");
   const query = q.trim().toLowerCase();
+  // GET /conversations?filter&q: the server filters and searches (names and words in messages
+  // you can see), page by page; the cache's copy keeps the list steady while it answers.
+  const pages = useConversations({ filter, q });
+  const found = query
+    ? new Set((pages.data?.pages ?? []).flatMap((p) => p.conversations.map((c) => c.id)))
+    : null;
   const rows = s.conversations
     .filter((c) => !s.blocked.includes(c.memberId))
     .filter((c) =>
@@ -66,6 +77,7 @@ function ConversationList({ activeId, s }: { activeId: string | null; s: State }
     )
     .filter((c) => {
       if (!query) return true;
+      if (found && c.kind !== "support") return found.has(c.id);
       const m = person(s, c.memberId);
       const who = m ? displayName(m).toLowerCase() : "";
       return (
@@ -83,7 +95,7 @@ function ConversationList({ activeId, s }: { activeId: string | null; s: State }
     { id: "all", label: "All" },
     { id: "unread", label: "Unread" },
     { id: "mentoring", label: "Mentoring" },
-    { id: "requests", label: "Requests", n: requests.length },
+    { id: "requests", label: "Requests", n: s.conversationRequests ?? requests.length },
   ];
 
   return (
@@ -178,6 +190,7 @@ function ConversationList({ activeId, s }: { activeId: string | null; s: State }
           })}
         </ul>
       )}
+      <MoreOnScroll query={pages} />
     </Panel>
   );
 }
@@ -308,7 +321,8 @@ function Composer({
   attachId,
   placeholder,
 }: {
-  onSend: (body: string) => boolean;
+  /** Resolves true once sent (the form then clears). */
+  onSend: (body: string) => boolean | Promise<boolean>;
   disabled?: string;
   attachId?: string | null;
   placeholder?: string;
@@ -323,7 +337,7 @@ function Composer({
     <form
       className="border-t border-line p-3 pb-[calc(12px+env(safe-area-inset-bottom))] sm:p-4 sm:pb-[calc(16px+env(safe-area-inset-bottom))] lg:pb-4"
       onSubmit={form.handleSubmit((values) => {
-        if (onSend(values.body)) form.reset();
+        void Promise.resolve(onSend(values.body)).then((sent) => sent && form.reset());
       })}
     >
       {disabled ? (
@@ -360,7 +374,9 @@ function Composer({
                       // Enter sends straight away, as the Send button would (even when it's off).
                       if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();
-                        if (onSend(field.value)) form.reset();
+                        void Promise.resolve(onSend(field.value)).then(
+                          (sent) => sent && form.reset(),
+                        );
                       }
                     }}
                   />
@@ -394,6 +410,9 @@ function Thread({ conv, s, attachId }: { conv: Conversation; s: State; attachId:
   const [report, setReport] = useState(false);
   const [confirmBlock, setConfirmBlock] = useState(false);
   const end = useRef<HTMLLIElement>(null);
+  // Older messages load as the thread scrolls up (newest page first).
+  const older = useConversation(conv.kind === "support" ? null : conv.id);
+  const newest = conv.messages[conv.messages.length - 1]?.id;
   const mentoringReq = s.mentorRequests.find(
     (r) =>
       r.status === "accepted" &&
@@ -404,18 +423,18 @@ function Thread({ conv, s, attachId }: { conv: Conversation; s: State; attachId:
   useEffect(() => {
     if (conv.unread) messageService.markRead(conv.id);
   }, [conv.id, conv.unread]);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the message count is the trigger, not an input: scroll to the newest message each time one is added
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the newest message is the trigger, not an input: scroll to it each time one is added (older pages loading above don't move the view)
   useEffect(() => {
     end.current?.scrollIntoView({ block: "end" });
-  }, [conv.messages.length]);
+  }, [newest]);
 
   if (!other) return null;
   const name = displayName(other);
   const support = conv.kind === "support";
   const unavailable = other.unavailable;
 
-  const send = (body: string) => {
-    const r = messageService.send(conv.id, body, attachId ?? undefined);
+  const send = async (body: string) => {
+    const r = await messageService.send(conv.id, body, attachId ?? undefined);
     const okd = handle(r);
     if (okd && attachId) router.replace(`/messages/${conv.id}`);
     return okd;
@@ -520,6 +539,11 @@ function Thread({ conv, s, attachId }: { conv: Conversation; s: State; attachId:
         style={{ overscrollBehavior: "contain" }}
         aria-label={`Conversation with ${name}`}
       >
+        {older.hasNextPage && (
+          <li aria-hidden>
+            <MoreOnScroll query={older} />
+          </li>
+        )}
         {conv.messages.map((m) => (
           <Bubble key={m.id} convId={conv.id} m={m} other={other} />
         ))}
@@ -614,8 +638,8 @@ function NewConversation({ member, attachId }: { member: Member; attachId: strin
               : undefined
         }
         placeholder={mode === "request" ? "Write your message request" : undefined}
-        onSend={(body) => {
-          const r = messageService.start(member.id, body, attachId ?? undefined);
+        onSend={async (body) => {
+          const r = await messageService.start(member.id, body, attachId ?? undefined);
           const okd = handle(r);
           if (okd && r.ok) router.replace(`/messages/${r.id}`);
           return okd;
@@ -631,6 +655,12 @@ export function MessagesView({ activeId }: { activeId: string | null }) {
   const params = useSearchParams();
   const to = params.get("to");
   const attach = params.get("attach");
+  // GET /conversations (and the open thread), into the cache this view reads; a new message
+  // to someone loads their profile for the "can I message them" answer.
+  useConversations();
+  useConversation(activeId);
+  useMember(to && !s.conversations.some((c) => c.memberId === to) ? to : "");
+  useMentorships();
   const conv = activeId ? s.conversations.find((c) => c.id === activeId) : undefined;
   const existingTo = to ? s.conversations.find((c) => c.memberId === to) : undefined;
   const toMember = to && !existingTo ? s.members.find((m) => m.id === to) : undefined;

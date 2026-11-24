@@ -14,19 +14,21 @@ import { Button, LinkButton } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { toast } from "@/components/ui/toast";
 import { groupService } from "@/features/groups";
-import { articleBySlug, articleCover, DISCLAIMER, sectionId } from "@/features/learn";
-import { settingsService } from "@/features/settings";
+import { articleCover, DISCLAIMER, learnService, sectionId, useArticle } from "@/features/learn";
 import { hueInk } from "@/lib/hue";
 import { useStore } from "@/lib/mock-server";
 
 export default function ArticlePage() {
   const { slug } = useParams<{ slug: string }>();
-  const a = articleBySlug(slug);
+  // GET /learn/articles/{id}, into the cache this page reads.
+  const query = useArticle(slug);
+  const a = useStore((s) => s.articles.find((x) => x.slug === slug && x.sections.length > 0));
   const saved = useStore((s) => s.savedArticles.includes(slug));
   const helpful = useStore((s) => s.articleHelpful[slug]);
   const groups = useStore((s) => s.groups);
   const joined = useStore((s) => s.joined);
 
+  if (!a && query.isPending) return null;
   if (!a) {
     return (
       <EmptyState
@@ -147,14 +149,14 @@ export default function ArticlePage() {
                       <Button
                         size="sm"
                         variant="secondary"
-                        onClick={() => settingsService.rateArticle(slug, "yes")}
+                        onClick={() => learnService.rate(slug, "yes")}
                       >
                         Yes
                       </Button>
                       <Button
                         size="sm"
                         variant="secondary"
-                        onClick={() => settingsService.rateArticle(slug, "no")}
+                        onClick={() => learnService.rate(slug, "no")}
                       >
                         Not really
                       </Button>
@@ -180,7 +182,7 @@ export default function ArticlePage() {
             <Button
               variant={saved ? "quiet" : "secondary"}
               onClick={() => {
-                settingsService.saveArticle(slug);
+                learnService.toggleSave(slug);
                 toast(saved ? "Removed from saved" : "Saved for your next appointment");
               }}
               aria-pressed={saved}

@@ -11,7 +11,7 @@ import { GroupCover } from "@/components/art/Brand";
 import { TreeArt } from "@/components/art/Tree";
 import { Person } from "@/components/common/Person";
 import { PostCard } from "@/components/common/PostCard";
-import { AvatarPicker, EmptyState } from "@/components/shared";
+import { AvatarPicker, EmptyState, MoreOnScroll } from "@/components/shared";
 import { Button, LinkButton } from "@/components/ui/button";
 import { ChipSelect } from "@/components/ui/chip-select";
 import { Dialog } from "@/components/ui/dialog";
@@ -21,10 +21,10 @@ import { Tabs } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/toast";
 import { POST_TYPES } from "@/config/options";
 import { displayName, meAsMember } from "@/features/auth";
-import { groupMatches, groupService } from "@/features/groups";
-import { feed } from "@/features/posts";
+import { groupMatches, groupService, useGroupMatches } from "@/features/groups";
+import { feed, useFeed, useFollowingFeed } from "@/features/posts";
 import { profileCompletion, settingsService } from "@/features/settings";
-import { peopleMatches, socialService } from "@/features/social";
+import { peopleMatches, socialService, usePeerMatches } from "@/features/social";
 import { type State, useStore } from "@/lib/mock-server";
 import { nextLevel, progress } from "@/lib/rules/sunlight";
 
@@ -96,6 +96,8 @@ function TreeCard() {
 
 function PeopleLikeYou() {
   const s = useStore();
+  // GET /matches/peers.
+  usePeerMatches();
   const people = peopleMatches(s, 4);
   return (
     <Panel className="p-5" id="people" aria-labelledby="people-h">
@@ -125,6 +127,13 @@ function PeopleLikeYou() {
                 >
                   Follow
                 </Button>
+                <LinkButton
+                  size="sm"
+                  variant="ghost"
+                  href={`/messages?to=${encodeURIComponent(member.id)}`}
+                >
+                  Message
+                </LinkButton>
                 <LinkButton size="sm" variant="ghost" href={`/u/${member.handle}`}>
                   View
                 </LinkButton>
@@ -271,6 +280,10 @@ export default function HomePage() {
   const [groups, setGroups] = useState<string[]>([]);
   const [types, setTypes] = useState<string[]>([]);
   const [filters, setFilters] = useState(false);
+  // GET /feed (+ matched posts) or GET /feed/following, into the cache `feed` reads.
+  const forYou = useFeed(sort, { groups, types });
+  const following = useFollowingFeed(tab === "following");
+  useGroupMatches("HomeFeed");
 
   const items = feed(s, { tab, sort, groups, types });
   const joinedGroups = s.groups.filter((g) => s.joined.includes(g.id));
@@ -344,13 +357,16 @@ export default function HomePage() {
               />
             )
           ) : (
-            <ul className="space-y-4">
-              {items.map(({ post, matched }) => (
-                <li key={post.id}>
-                  <PostCard post={post} matched={matched} />
-                </li>
-              ))}
-            </ul>
+            <>
+              <ul className="space-y-4">
+                {items.map(({ post, matched }) => (
+                  <li key={post.id}>
+                    <PostCard post={post} matched={matched} />
+                  </li>
+                ))}
+              </ul>
+              <MoreOnScroll query={tab === "following" ? following : forYou} />
+            </>
           )}
         </div>
 

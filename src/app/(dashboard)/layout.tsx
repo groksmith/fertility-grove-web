@@ -1,23 +1,29 @@
 "use client";
 
-/* Every signed-in screen. The gate sends people where their account state
-   says they belong: suspended → /suspended, deleting → /restore, signed out →
-   /login (or a group's or post's public page, when guests may read it), and
-   anyone mid-onboarding back to the next unfinished screen. */
+/* Every signed-in screen. The gate waits for the API session, then sends people where their
+   account state says they belong: suspended → /suspended, deleting → /restore, signed out →
+   /login (or a group's or post's public page, when guests may read it), outdated Terms →
+   /accept-terms, and anyone mid-onboarding back to the next unfinished screen. */
 
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/common/AppShell";
 import { LevelUp } from "@/components/common/LevelUp";
-import { publicGroup, publicPost } from "@/features/posts";
-import { type State, useHydrated, useStore } from "@/lib/mock-server";
+import { usePublicGroup, usePublicPost } from "@/features/posts";
+import { useHydrated, useStore } from "@/lib/mock-server";
 
-/** Signed out on a group or post that guests may read: show its public page
-    instead of asking them to sign in (PRD v1.2 §10). */
-function guestPage(s: State, path: string) {
-  const [, kind, id] = path.split("/");
-  if (kind === "groups" && id && publicGroup(s, id)) return `/community/${id}`;
-  if (kind === "posts" && id && id !== "new" && publicPost(s, id)) return `/p/${id}`;
+/** Signed out on a group or post that guests may read: show its public page instead of asking
+    them to sign in (PRD v1.2 §10). Asks the public endpoints; anything else goes to sign-in. */
+function useGuestPage(path: string, ask: boolean) {
+  const [, kind, raw] = path.split("/");
+  const id = ask && raw && raw !== "new" ? raw : "";
+  const group = usePublicGroup(kind === "groups" ? id : "");
+  const post = usePublicPost(kind === "posts" ? id : "");
+  if (kind === "groups" && id)
+    return group.isPending ? null : group.data ? `/community/${id}` : "/login";
+  if (kind === "posts" && id) return post.isPending ? null : post.data ? `/p/${id}` : "/login";
+  // Learn is open to visitors as titles and summaries (PRD §16).
+  if (kind === "learn") return id ? `/library/${id}` : "/library";
   return "/login";
 }
 
@@ -29,6 +35,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // Signing out here always opens sign-in; only arriving signed out finds a public page.
   const [wasSignedIn, setWasSignedIn] = useState(false);
   if (hydrated && s.signedIn && !wasSignedIn) setWasSignedIn(true);
+  const ready = hydrated && s.session !== "loading";
+  const guest = useGuestPage(path, ready && !s.signedIn && !wasSignedIn);
 
   const target = s.suspension
     ? "/suspended"
@@ -37,16 +45,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       : !s.signedIn
         ? wasSignedIn
           ? "/login"
-          : guestPage(s, path)
-        : s.step < 9
-          ? `/onboarding/${s.step}`
-          : null;
+          : guest
+        : s.terms?.mustAccept
+          ? `/accept-terms?v=${encodeURIComponent(s.terms.version)}`
+          : s.step < 9
+            ? `/onboarding/${s.step}`
+            : null;
 
   useEffect(() => {
-    if (hydrated && target) router.replace(target);
-  }, [hydrated, target, router]);
+    if (ready && target) router.replace(target);
+  }, [ready, target, router]);
 
-  if (!hydrated || target) {
+  if (!ready || target || (!s.signedIn && !target)) {
     return <div className="min-h-dvh bg-ground" aria-busy="true" />;
   }
 

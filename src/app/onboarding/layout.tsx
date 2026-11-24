@@ -1,3 +1,4 @@
+import { CrisisWatch } from "@/components/common/Safety";
 import { Toaster } from "@/components/ui/toast";
 
 export const metadata = { title: "Getting started · Fertility Grove" };
@@ -7,6 +8,7 @@ export default function OnboardingLayout({ children }: { children: React.ReactNo
     <div className="min-h-dvh bg-ground">
       {children}
       <Toaster />
+      <CrisisWatch />
     </div>
   );
 }

@@ -17,7 +17,7 @@ import { Avatar, FormField, SourceLabel, TypeChip, VoteControl } from "@/compone
 import { Button, LinkButton } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Panel } from "@/components/ui/panel";
-import { authService, joinWaitlistSchema, signUpStatus } from "@/features/auth";
+import { authService, joinWaitlistSchema, useSignUpStatus } from "@/features/auth";
 import { allowsDownvote, type PublicPost } from "@/features/posts";
 import { plural, timeAgo } from "@/lib/format";
 import { useStore } from "@/lib/mock-server";
@@ -26,11 +26,11 @@ import { useStore } from "@/lib/mock-server";
 export function useGuestAction() {
   const router = useRouter();
   const s = useStore();
+  const status = useSignUpStatus();
   const [open, setOpen] = useState(false);
   const ask = (memberHref: string) => {
     if (s.signedIn && s.step >= 9) return router.push(memberHref);
-    // TODO(api): GET /api/v1/auth/sign-up-status.
-    if (!signUpStatus(s).isInviteOnly) return router.push("/signup");
+    if (!status.isInviteOnly && !status.isPaused) return router.push("/signup");
     setOpen(true);
   };
   return { ask, ui: <SignUpPrompt open={open} onClose={() => setOpen(false)} /> };
@@ -63,9 +63,8 @@ function SignUpPrompt({ open, onClose }: { open: boolean; onClose: () => void })
         <form
           noValidate
           className="space-y-4"
-          onSubmit={form.handleSubmit(({ email }) => {
-            // TODO(api): POST /api/v1/auth/sign-up-waitlist.
-            const r = authService.joinWaitlist(email);
+          onSubmit={form.handleSubmit(async ({ email }) => {
+            const r = await authService.joinWaitlist(email);
             if (r.ok) setDone(email.trim());
             else form.setError("email", { message: r.error });
           })}

@@ -9,7 +9,7 @@ import { useForm } from "react-hook-form";
 import { AuthFrame } from "@/components/common/AuthFrame";
 import { FormField } from "@/components/shared";
 import { Button } from "@/components/ui/button";
-import { forgotPasswordSchema } from "@/features/auth";
+import { authService, forgotPasswordSchema } from "@/features/auth";
 import { MSG } from "@/lib/rules/validation";
 
 export default function ForgotPasswordPage() {
@@ -33,14 +33,19 @@ export default function ForgotPasswordPage() {
             {MSG.resetSent}
           </p>
           <p className="mt-5 text-[14px] text-muted">
-            The link works once and expires in 60 minutes.{" "}
-            <Link href="/reset-password" className="font-semibold text-accent underline">
-              Open the link (prototype)
-            </Link>
+            The link works once and expires in 60 minutes.
           </p>
         </div>
       ) : (
-        <form noValidate className="space-y-5" onSubmit={form.handleSubmit(() => setSent(true))}>
+        <form
+          noValidate
+          className="space-y-5"
+          onSubmit={form.handleSubmit(async ({ email }) => {
+            const r = await authService.forgotPassword(email);
+            if (r.ok) setSent(true);
+            else form.setError("email", { message: r.error });
+          })}
+        >
           <FormField
             form={form}
             name="email"

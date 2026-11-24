@@ -12,6 +12,10 @@ export const changeEmailSchema = z.object({
     const e = checks.email(v);
     if (e) ctx.addIssue({ code: "custom", message: e });
   }),
+  /** PUT /auth/account asks for it (the new email is confirmed by a link). */
+  currentPassword: z.string().superRefine((v, ctx) => {
+    if (!v) ctx.addIssue({ code: "custom", message: "Enter your current password." });
+  }),
 });
 export type ChangeEmailInput = z.input<typeof changeEmailSchema>;
 

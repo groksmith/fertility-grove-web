@@ -38,9 +38,10 @@ export default function LoginPage() {
       <Button
         variant="secondary"
         className="w-full"
-        onClick={() => {
-          authService.signInWithGoogle(form.getValues("keep"));
-          router.push("/feed");
+        onClick={async () => {
+          const r = await authService.signInWithGoogle(form.getValues("keep"));
+          if (!r.ok) form.setError("root", { message: r.error });
+          else router.push("/feed");
         }}
       >
         <GoogleMark /> Continue with Google
@@ -52,8 +53,8 @@ export default function LoginPage() {
       <form
         noValidate
         className="space-y-5"
-        onSubmit={form.handleSubmit(({ email, password, keep }) => {
-          const r = authService.signIn(email, password, keep);
+        onSubmit={form.handleSubmit(async ({ email, password, keep }) => {
+          const r = await authService.signIn(email, password, keep);
           if (!r.ok) form.setError("root", { message: r.error });
           else router.push("/feed");
         })}

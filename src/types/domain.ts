@@ -16,7 +16,10 @@ export type Badge = "mentor" | "founding-mentor" | "clinician" | "team" | "partn
 
 /** Someone other than the signed-in member. */
 export interface Member {
+  /** The handle (the API names members by handle); "me" for the signed-in member. */
   id: string;
+  /** The API's member id, where one was sent (unblock takes it). */
+  apiId?: string;
   handle: string;
   firstName: string;
   lastInitial: string;
@@ -48,6 +51,10 @@ export interface Member {
   unavailable?: "suspended" | "deleting";
   /** Members this member blocked. Only "me" matters in the prototype. */
   blocks?: string[];
+  /** The API's answer to "may I message them?" (GET /members/{handle}). */
+  canMessage?: boolean;
+  /** The API's answer to "may I ask them to mentor me?". */
+  canRequestMentor?: boolean;
 }
 
 export interface MentorProfile {
@@ -77,6 +84,18 @@ export interface Group {
   community: CommunityId | "both";
   members: number;
   postsThisWeek: number;
+  /** Up to 5 recent posters' avatars, decoration only (GET /groups/{id}). */
+  posterAvatars?: { hue: Hue; preset?: number }[];
+  /** "From the library" links (GET /groups/{id}). */
+  readingLinks?: {
+    articleId: string;
+    articleTitle: string | null;
+    sectionSlug: string | null;
+    label: string | null;
+  }[];
+  /** False for a Members-only group the viewer hasn't joined. */
+  canReadPosts?: boolean;
+  membersOnlyNotice?: string | null;
 }
 
 export type PostType =
@@ -143,6 +162,8 @@ export interface Post {
   saved: boolean;
   edited?: boolean;
   status: ContentStatus;
+  /** The API's own reply count (the cache may hold none of the comments). */
+  commentCount?: number;
 }
 
 export interface Story {
@@ -319,6 +340,8 @@ export interface Purchase {
 export type InviteStatus = "pending" | "accepted" | "expired" | "cancelled";
 
 export interface PartnerInvite {
+  /** The API's invite id (resend / cancel). */
+  id?: string;
   email: string;
   note?: string;
   status: InviteStatus;

@@ -9,12 +9,12 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Search } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { Spot } from "@/components/art/Scenes";
-import { EmptyState, PageHeader } from "@/components/shared";
+import { EmptyState, MoreOnScroll, PageHeader } from "@/components/shared";
 import { Panel } from "@/components/ui/panel";
-import { ARTICLES, articleCover } from "@/features/learn";
+import { articleCover, useArticles, useRecommendedArticles } from "@/features/learn";
 import { searchSchema } from "@/features/search";
 import { useStore } from "@/lib/mock-server";
 import type { Article } from "@/types/domain";
@@ -56,45 +56,34 @@ function ArticleTile({ a, why }: { a: Article; why?: string }) {
 export default function LearnPage() {
   const me = useStore((s) => s.me);
   const saved = useStore((s) => s.savedArticles);
+  const ARTICLES = useStore((s) => s.articles);
+  const picks = useStore((s) => s.recommendedArticles);
   // Search as you type: the form only holds the query; Enter does nothing more.
   const form = useForm({ resolver: zodResolver(searchSchema), defaultValues: { q: "" } });
   const q = useWatch({ control: form.control, name: "q" });
   const [topic, setTopic] = useState<string | null>(null);
+  // GET /learn/articles: the library, the search as you type and a topic, filtered on the server
+  // and loaded page by page; and GET /learn/recommended.
+  const library = useArticles();
+  const term = q.trim();
+  const filtered = useArticles(term ? { search: term } : { topic: topic ?? undefined });
+  useRecommendedArticles();
+  const idsOf = (data: typeof filtered.data) =>
+    (data?.pages ?? []).flatMap((p) => p.articles.map((a) => a.id));
 
-  const recommended = useMemo(() => {
-    if (!me.healthConsent) return [];
-    return ARTICLES.filter(
-      (a) =>
-        a.diagnoses.some((d) => me.diagnoses.includes(d)) ||
-        a.stages.some((st) => me.stages.includes(st)),
-    )
-      .sort(
-        (a, b) =>
-          Number(b.diagnoses.some((d) => me.diagnoses.includes(d))) -
-          Number(a.diagnoses.some((d) => me.diagnoses.includes(d))),
-      )
-      .slice(0, 3);
-  }, [me]);
+  // Matched to the member's journey by the API, with its reason; health answers decide.
+  const recommended = me.healthConsent
+    ? (picks ?? []).flatMap((p) => ARTICLES.filter((a) => a.slug === p.slug)).slice(0, 3)
+    : [];
 
-  const whyFor = (a: Article) => {
-    const dx = a.diagnoses.find((d) => me.diagnoses.includes(d));
-    const st = a.stages.find((x) => me.stages.includes(x));
-    const term = dx ?? st ?? a.diagnosis;
-    return `Matched on ${/^[A-Z]{2,}/.test(term) ? term : term.toLowerCase()}`;
-  };
+  const whyFor = (a: Article) =>
+    picks?.find((p) => p.slug === a.slug)?.why ?? `Matched on ${a.diagnosis.toLowerCase()}`;
 
-  const topics = useMemo(() => Array.from(new Set(ARTICLES.flatMap((a) => a.topics))).sort(), []);
+  const topics = Array.from(new Set(ARTICLES.flatMap((a) => a.topics))).sort();
 
-  const query = q.trim().toLowerCase();
-  const results = query
-    ? ARTICLES.filter((a) =>
-        [a.title, a.summary, ...a.sections.flatMap((s) => [s.heading, ...s.body])]
-          .join(" ")
-          .toLowerCase()
-          .includes(query),
-      )
-    : topic
-      ? ARTICLES.filter((a) => a.topics.includes(topic))
+  const results =
+    term || topic
+      ? idsOf(filtered.data).flatMap((id) => ARTICLES.filter((a) => a.slug === id))
       : null;
 
   const finding = recommended.length
@@ -127,7 +116,7 @@ export default function LearnPage() {
         <section aria-labelledby="results-h">
           <div className="mb-4 flex items-baseline justify-between gap-3">
             <h2 id="results-h" className="text-[20px] font-semibold">
-              {query ? `Results for “${q.trim()}”` : `Topic: ${topic}`}
+              {term ? `Results for “${term}”` : `Topic: ${topic}`}
             </h2>
             <button
               type="button"
@@ -140,14 +129,17 @@ export default function LearnPage() {
               Clear
             </button>
           </div>
-          {results.length ? (
-            <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {results.map((a) => (
-                <li key={a.slug} className="flex">
-                  <ArticleTile a={a} />
-                </li>
-              ))}
-            </ul>
+          {filtered.isPending ? null : results.length ? (
+            <>
+              <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {results.map((a) => (
+                  <li key={a.slug} className="flex">
+                    <ArticleTile a={a} />
+                  </li>
+                ))}
+              </ul>
+              <MoreOnScroll query={filtered} />
+            </>
           ) : (
             <EmptyState
               art="lens"
@@ -211,6 +203,7 @@ export default function LearnPage() {
                 ))}
               </ul>
             </Panel>
+            <MoreOnScroll query={library} />
           </section>
 
           <section aria-labelledby="topic-h">

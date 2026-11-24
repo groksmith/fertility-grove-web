@@ -20,6 +20,7 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { POST_TYPE_HELP, POST_TYPES, SOURCES, TOPIC_TAGS } from "@/config/options";
+import { useGroups } from "@/features/groups";
 import { createPostSchema, type PostInput, postService } from "@/features/posts";
 import { useStore } from "@/lib/mock-server";
 
@@ -124,7 +125,7 @@ function Composer() {
   const focusSummary = () => document.getElementById("post-errors")?.focus();
 
   const submit = form.handleSubmit(
-    (values) => {
+    async (values) => {
       if (missingAgreement(values.agreed)) return focusSummary();
       const visitors = values.showToVisitors && offersVisitors(group);
       const input: PostInput = {
@@ -138,7 +139,7 @@ function Composer() {
         allowSharing: (values.allowSharing || visitors) && !membersOnly,
         showToVisitors: visitors,
       };
-      const r = postService.create(input);
+      const r = await postService.create(input);
       if (handle(r) && r.ok && r.id) setDone(r.id);
     },
     () => {
@@ -362,6 +363,8 @@ function Composer() {
 }
 
 export default function NewPostPage() {
+  // GET /groups: the groups a post can go to.
+  useGroups();
   return (
     <>
       <PageHeader

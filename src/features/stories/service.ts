@@ -1,65 +1,159 @@
-import { confirmed, fail, ok, type Result, set, uid } from "@/lib/mock-server";
-import { detectCrisis } from "@/lib/rules/crisis";
+/* Success stories (PRD §10): list, publish, upvote and save. A story is a post without a group, so
+   votes and saves use the post endpoints. */
+
+import { apiSource, apiStoryType } from "@/lib/api/enums";
+import { codesOf } from "@/lib/api/options";
+import { refresh } from "@/lib/api/query-client";
+import { crisisOf, fail, failure, ok, type Result } from "@/lib/api/result";
+import { httpClient } from "@/lib/http";
+import { get, set } from "@/lib/mock-server";
+import { notice } from "@/lib/notice";
 import { MSG } from "@/lib/rules/validation";
 import type { Source, StoryType } from "@/types/domain";
 
-/* --------------------------------------------------------------- Stories */
+interface WriteDto {
+  id: string;
+  showCrisisResources: boolean;
+  heldForReview: boolean;
+}
 
 export const storyService = {
-  create(st: {
+  /** POST /success-stories. */
+  async create(st: {
     type: StoryType | "";
     title: string;
     body: string;
     diagnoses: string[];
     whatHelped: string[];
     source: Source | "";
-  }): Result {
-    const gate = confirmed();
-    if (gate) return gate;
+  }): Promise<Result> {
+    const me = get().me;
+    if (me.status === "unconfirmed") return fail(MSG.unconfirmed(me.email), "unconfirmed");
     if (!st.type || !st.title.trim() || !st.body.trim() || !st.source)
       return fail(MSG.storyMissing);
-    const id = uid("s");
-    const crisis = detectCrisis(`${st.title} ${st.body}`);
-    set((s) => ({
-      ...s,
-      stories: [
-        {
-          id,
-          authorId: "me",
-          type: st.type as StoryType,
-          title: st.title.trim(),
-          body: st.body.trim(),
-          diagnoses: st.diagnoses,
-          whatHelped: st.whatHelped,
-          source: st.source as Source,
-          minutesAgo: 0,
-          up: 0,
-          myVote: 0,
-          comments: 0,
-          saved: false,
-        },
-        ...s.stories,
-      ],
-    }));
-    return ok({ id, crisis });
+    try {
+      const sent = await httpClient.send<WriteDto>("POST", "/success-stories", {
+        storyType: apiStoryType(st.type),
+        title: st.title.trim(),
+        story: st.body.trim(),
+        source: apiSource(st.source),
+        sourceLink: null,
+        diagnoses: codesOf(st.diagnoses),
+        whatHelped: codesOf(st.whatHelped),
+        acceptGuidelines: true,
+        allowSharingOutside: false,
+      });
+      void refresh(["stories"], ["posts"], ["dashboard"]);
+      return ok({ id: sent.data.id, crisis: crisisOf(sent, sent.data) });
+    } catch (error) {
+      return failure(error);
+    }
   },
-  upvote(id: string): Result {
-    const gate = confirmed();
-    if (gate) return gate;
-    set((s) => ({
-      ...s,
-      stories: s.stories.map((x) =>
-        x.id === id && x.authorId !== "me"
-          ? { ...x, myVote: x.myVote === 1 ? 0 : 1, up: x.up + (x.myVote === 1 ? -1 : 1) }
-          : x,
-      ),
-    }));
-    return ok();
+
+  /** PUT /success-stories/{id}: the author edits the whole story (checked for crisis words again). */
+  async edit(
+    id: string,
+    st: {
+      type: StoryType | "";
+      title: string;
+      body: string;
+      diagnoses: string[];
+      whatHelped: string[];
+      source: Source | "";
+    },
+  ): Promise<Result> {
+    if (!st.type || !st.title.trim() || !st.body.trim() || !st.source)
+      return fail(MSG.storyMissing);
+    try {
+      const sent = await httpClient.send<WriteDto>("PUT", `/success-stories/${id}`, {
+        postId: id,
+        storyType: apiStoryType(st.type),
+        title: st.title.trim(),
+        story: st.body.trim(),
+        source: apiSource(st.source),
+        sourceLink: null,
+        diagnoses: codesOf(st.diagnoses),
+        whatHelped: codesOf(st.whatHelped),
+        allowSharingOutside: false,
+      });
+      set((s) => ({
+        ...s,
+        stories: s.stories.map((x) =>
+          x.id === id
+            ? {
+                ...x,
+                type: st.type as StoryType,
+                title: st.title.trim(),
+                body: st.body.trim(),
+                diagnoses: st.diagnoses,
+                whatHelped: st.whatHelped,
+                source: st.source as Source,
+              }
+            : x,
+        ),
+      }));
+      void refresh(["stories"], ["posts"], ["dashboard"]);
+      return ok({ id, crisis: crisisOf(sent, sent.data) });
+    } catch (error) {
+      return failure(error);
+    }
   },
-  toggleSave(id: string) {
-    set((s) => ({
-      ...s,
-      stories: s.stories.map((x) => (x.id === id ? { ...x, saved: !x.saved } : x)),
-    }));
+
+  /** DELETE /posts/{id}: a story is a post without a group. */
+  async remove(id: string): Promise<Result> {
+    try {
+      await httpClient.delete(`/posts/${id}`);
+      set((s) => ({ ...s, stories: s.stories.filter((x) => x.id !== id) }));
+      void refresh(["stories"], ["posts"], ["dashboard"]);
+      return ok();
+    } catch (error) {
+      const f = failure(error);
+      if (!f.ok) notice(f.error);
+      return f;
+    }
+  },
+
+  /** PUT /posts/{id}/vote "Up"; again removes it. Stories take no downvotes. */
+  async upvote(id: string): Promise<Result> {
+    const s = get();
+    if (s.me.status === "unconfirmed") return fail(MSG.unconfirmed(s.me.email), "unconfirmed");
+    const story = s.stories.find((x) => x.id === id);
+    if (!story || story.authorId === "me") return ok();
+    const flip = () =>
+      set((x) => ({
+        ...x,
+        stories: x.stories.map((k) =>
+          k.id === id
+            ? { ...k, myVote: k.myVote === 1 ? 0 : 1, up: k.up + (k.myVote === 1 ? -1 : 1) }
+            : k,
+        ),
+      }));
+    flip();
+    try {
+      await httpClient.put(`/posts/${id}/vote`, "Up");
+      return ok();
+    } catch (error) {
+      flip();
+      return failure(error);
+    }
+  },
+
+  /** PUT /posts/{id}/saved. */
+  async toggleSave(id: string): Promise<Result> {
+    const story = get().stories.find((x) => x.id === id);
+    if (!story) return ok();
+    const apply = (saved: boolean) =>
+      set((s) => ({ ...s, stories: s.stories.map((x) => (x.id === id ? { ...x, saved } : x)) }));
+    apply(!story.saved);
+    try {
+      await httpClient.put(`/posts/${id}/saved`, !story.saved);
+      void refresh(["posts", "saved"], ["dashboard"]);
+      return ok();
+    } catch (error) {
+      apply(story.saved);
+      const f = failure(error);
+      if (!f.ok) notice(f.error);
+      return f;
+    }
   },
 };

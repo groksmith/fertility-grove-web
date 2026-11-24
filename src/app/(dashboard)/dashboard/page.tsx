@@ -27,6 +27,7 @@ import {
   EmptyState,
   FormField,
   HueSwatches,
+  MoreOnScroll,
   TypeChip,
   useUnsavedGuard,
 } from "@/components/shared";
@@ -41,16 +42,31 @@ import { toast } from "@/components/ui/toast";
 import { PRONOUNS } from "@/config/options";
 import { displayName, meAsMember, person } from "@/features/auth";
 import { familyInviteSchema } from "@/features/family";
+import { useGroups } from "@/features/groups";
+import { useMentorships } from "@/features/mentors";
 import { partnerService } from "@/features/partner";
-import { commentCount, postService, savedItems, score } from "@/features/posts";
+import {
+  commentCount,
+  postService,
+  savedItems,
+  score,
+  useMyContent,
+  useSaved,
+} from "@/features/posts";
 import {
   type EditProfileInput,
   editProfileSchema,
   firstErrors,
   removalAppealSchema,
   settingsService,
+  useDashboard,
+  useDashboardCounts,
+  useProfilePreview,
+  useSunlightHistory,
 } from "@/features/settings";
 import { socialService } from "@/features/social";
+import { minutesSince } from "@/lib/api/enums";
+import { memberFromRef } from "@/lib/api/members";
 import { plural, timeAgo } from "@/lib/format";
 import { type State, useStore } from "@/lib/mock-server";
 import { requestLeave } from "@/lib/navigation-guard";
@@ -150,6 +166,8 @@ function TreeHero() {
 
 function SunlightHistory() {
   const history = useStore((s) => s.me.history);
+  // GET /profile/me/sunlight, page by page.
+  const pages = useSunlightHistory();
   return (
     <Panel className="p-5 sm:p-6" id="sunlight" aria-labelledby="sun-h">
       <h2 id="sun-h" className="text-[18px] font-semibold">
@@ -180,6 +198,7 @@ function SunlightHistory() {
           ))}
         </ul>
       )}
+      <MoreOnScroll query={pages} />
       <details className="mt-4 text-[14px] text-ink-soft">
         <summary className="cursor-pointer font-semibold text-ink">How Sunlight works</summary>
         <ul className="mt-2 space-y-1">
@@ -196,7 +215,9 @@ function SunlightHistory() {
 
 function PublicPreview() {
   const s = useStore();
-  const me = meAsMember(s);
+  const local = meAsMember(s);
+  // GET /profile/me/preview applies the visibility rules others get; the local copy shows meanwhile.
+  const me = useProfilePreview(true, local).data ?? local;
   return (
     <Panel className="p-5 ring-1 ring-line-strong sm:p-7">
       <p className="mb-4 rounded-[10px] bg-raised px-3 py-2 text-[13px] font-semibold text-ink">
@@ -292,9 +313,14 @@ function EditProfile({ onDone }: { onDone: () => void }) {
   const commit = () => {
     const v = form.getValues();
     const errs: Partial<Record<keyof EditProfileInput, string>> = firstErrors(editProfileSchema, v);
-    if (v.handle !== me.handle) {
-      const r = settingsService.changeHandle(v.handle.trim());
-      if (!r.ok) errs.handle = r.error;
+    if (v.handle !== me.handle && !errs.handle) {
+      // The API decides availability and the 30-day rule; a refusal is shown when it answers.
+      void settingsService.changeHandle(v.handle.trim()).then((r) => {
+        if (!r.ok) {
+          form.setError("handle", { message: r.error });
+          toast(r.error);
+        }
+      });
     }
     form.clearErrors();
     for (const [name, message] of Object.entries(errs))
@@ -510,8 +536,8 @@ function PartnerCard() {
             <Button
               size="sm"
               variant="secondary"
-              onClick={() => {
-                const r = partnerService.resend();
+              onClick={async () => {
+                const r = await partnerService.resend();
                 toast(r.ok ? "Invite sent again" : r.error);
               }}
             >
@@ -532,8 +558,8 @@ function PartnerCard() {
       ) : (
         <form
           className="mt-3 space-y-3"
-          onSubmit={form.handleSubmit(({ email, note }) => {
-            const r = partnerService.invite(email, note);
+          onSubmit={form.handleSubmit(async ({ email, note }) => {
+            const r = await partnerService.invite(email, note);
             if (!r.ok) form.setError("email", { message: r.error });
             else toast("Invite sent");
           })}
@@ -627,24 +653,69 @@ function Connections() {
 }
 
 /** Your latest posts and replies, newest first, with a way into each full list. */
+type Activity = {
+  kind: "post" | "reply";
+  id: string;
+  minutesAgo: number;
+  group?: string;
+  title?: string;
+  href: string;
+  body?: string;
+  score: number;
+  replies: number;
+};
+
 function RecentActivity({ onOpen }: { onOpen: (t: Tab) => void }) {
   const s = useStore();
+  // GET /profile/me/dashboard: the 4 newest of my posts and replies (removed ones left out),
+  // across every page. The loaded lists stand in until it answers.
+  const dash = useDashboard().data;
   const { posts: allPosts, replies: allReplies } = mine(s);
   const posts = allPosts.filter((p) => p.status !== "removed");
   const replies = allReplies.filter((c) => c.status !== "removed");
-  const items = [
-    ...posts.map((p) => ({ kind: "post" as const, id: p.id, minutesAgo: p.minutesAgo, post: p })),
-    ...replies.map((c) => ({
-      kind: "reply" as const,
-      id: c.id,
-      minutesAgo: c.minutesAgo,
-      comment: c,
-      post: s.posts.find((p) => p.id === c.postId),
-    })),
-  ]
-    .sort((a, b) => a.minutesAgo - b.minutesAgo)
-    .slice(0, 4);
   const groupName = (id?: string) => s.groups.find((g) => g.id === id)?.name;
+  const items: Activity[] = dash
+    ? dash.recentActivity
+        .filter((a) => a.status !== "Removed")
+        .map((a) => ({
+          kind: a.kind === "Post" ? "post" : "reply",
+          id: a.commentId ?? a.postId,
+          minutesAgo: minutesSince(a.createdAt),
+          group: a.groupName ?? (a.isSuccessStory ? "Success stories" : undefined),
+          title: a.postTitle ?? undefined,
+          href: `${a.isSuccessStory ? "/stories" : "/posts"}/${a.postId}${a.kind === "Reply" ? "#comments" : ""}`,
+          body: a.replyText ?? undefined,
+          score: a.score,
+          replies: a.replyCount,
+        }))
+    : [
+        ...posts.map((p) => ({
+          kind: "post" as const,
+          id: p.id,
+          minutesAgo: p.minutesAgo,
+          group: groupName(p.groupId),
+          title: p.title,
+          href: `/posts/${p.id}`,
+          score: score(p),
+          replies: commentCount(s, p.id),
+        })),
+        ...replies.map((c) => {
+          const post = s.posts.find((p) => p.id === c.postId);
+          return {
+            kind: "reply" as const,
+            id: c.id,
+            minutesAgo: c.minutesAgo,
+            group: groupName(post?.groupId),
+            title: post?.title,
+            href: `/posts/${c.postId}#comments`,
+            body: c.body,
+            score: score(c),
+            replies: 0,
+          };
+        }),
+      ]
+        .sort((a, b) => a.minutesAgo - b.minutesAgo)
+        .slice(0, 4);
 
   return (
     <Panel className="p-5 sm:p-6" aria-labelledby="activity-h">
@@ -674,26 +745,24 @@ function RecentActivity({ onOpen }: { onOpen: (t: Tab) => void }) {
               <div className="min-w-0 flex-1">
                 <p className="text-[13px] text-muted">
                   {it.kind === "post" ? "You posted" : "You replied"}
-                  {groupName(it.post?.groupId) && <> in {groupName(it.post?.groupId)}</>} ·{" "}
-                  {ago(it.minutesAgo)}
+                  {it.group && <> in {it.group}</>} · {ago(it.minutesAgo)}
                 </p>
-                {it.post && (
+                {it.title && (
                   <Link
-                    href={`/posts/${it.post.id}${it.kind === "reply" ? "#comments" : ""}`}
+                    href={it.href}
                     className="mt-0.5 block text-[15px] leading-snug font-semibold text-ink hover:underline"
                   >
-                    {it.post.title}
+                    {it.title}
                   </Link>
                 )}
                 {it.kind === "reply" && (
                   <p className="mt-1 line-clamp-2 text-[14px] leading-relaxed text-ink-soft">
-                    {it.comment.body}
+                    {it.body}
                   </p>
                 )}
                 {it.kind === "post" && (
                   <p className="tabular mt-1 text-[13px] text-muted">
-                    {plural(score(it.post), "vote")} ·{" "}
-                    {plural(commentCount(s, it.post.id), "reply", "replies")}
+                    {plural(it.score, "vote")} · {plural(it.replies, "reply", "replies")}
                   </p>
                 )}
               </div>
@@ -701,7 +770,7 @@ function RecentActivity({ onOpen }: { onOpen: (t: Tab) => void }) {
           ))}
         </ul>
       )}
-      {(posts.length > 0 || replies.length > 0) && (
+      {(items.length > 0 || posts.length > 0 || replies.length > 0) && (
         <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 border-t border-line pt-3 text-[14px]">
           <button
             type="button"
@@ -832,6 +901,7 @@ function RemovedPost({ post }: { post: Post }) {
 function PostsTab() {
   const s = useStore();
   const { posts, stories } = mine(s);
+  const pages = useMyContent();
   if (posts.length === 0 && stories.length === 0) {
     return (
       <EmptyState
@@ -851,6 +921,7 @@ function PostsTab() {
           </li>
         ))}
       </ul>
+      <MoreOnScroll query={pages.posts} />
       {stories.length > 0 && (
         <Panel className="p-5 sm:p-6" aria-labelledby="my-stories-h">
           <h2 id="my-stories-h" className="text-[16px] font-semibold">
@@ -861,7 +932,7 @@ function PostsTab() {
               <li key={st.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3">
                 <TypeChip type={st.type} />
                 <Link
-                  href="/stories"
+                  href={`/stories/${st.id}`}
                   className="min-w-0 flex-1 text-[15px] font-semibold text-ink hover:underline"
                 >
                   {st.title}
@@ -870,6 +941,7 @@ function PostsTab() {
               </li>
             ))}
           </ul>
+          <MoreOnScroll query={pages.stories} />
         </Panel>
       )}
     </div>
@@ -879,6 +951,7 @@ function PostsTab() {
 function RepliesTab() {
   const s = useStore();
   const { replies } = mine(s);
+  const pages = useMyContent();
   if (replies.length === 0) {
     return (
       <EmptyState
@@ -894,47 +967,50 @@ function RepliesTab() {
     );
   }
   return (
-    <ul className="space-y-3">
-      {replies.map((c) => {
-        const post = s.posts.find((p) => p.id === c.postId);
-        const group = s.groups.find((g) => g.id === post?.groupId);
-        return (
-          <li key={c.id}>
-            <Panel className="p-5">
-              <p className="text-[13px] text-muted">
-                {group ? <>{group.name} · </> : null}
-                {ago(c.minutesAgo)}
-                {c.status === "held" && " · Only you can see this for now"}
-              </p>
-              {post && (
-                <Link
-                  href={`/posts/${post.id}#comments`}
-                  className="mt-0.5 block text-[15px] leading-snug font-semibold text-ink hover:underline"
-                >
-                  On “{post.title}”
-                </Link>
-              )}
-              <p className="mt-2 text-[15px] leading-relaxed whitespace-pre-line text-ink-soft">
-                {c.body}
-              </p>
-              {c.status === "removed" ? (
-                <Removed
-                  what="reply"
-                  appealed={c.appealed}
-                  onAppeal={() => postService.appealComment(c.id)}
-                  onDelete={() => {
-                    postService.removeComment(c.id);
-                    toast("Reply deleted");
-                  }}
-                />
-              ) : (
-                <p className="tabular mt-3 text-[13px] text-muted">{plural(score(c), "vote")}</p>
-              )}
-            </Panel>
-          </li>
-        );
-      })}
-    </ul>
+    <>
+      <ul className="space-y-3">
+        {replies.map((c) => {
+          const post = s.posts.find((p) => p.id === c.postId);
+          const group = s.groups.find((g) => g.id === post?.groupId);
+          return (
+            <li key={c.id}>
+              <Panel className="p-5">
+                <p className="text-[13px] text-muted">
+                  {group ? <>{group.name} · </> : null}
+                  {ago(c.minutesAgo)}
+                  {c.status === "held" && " · Only you can see this for now"}
+                </p>
+                {post && (
+                  <Link
+                    href={`/posts/${post.id}#comments`}
+                    className="mt-0.5 block text-[15px] leading-snug font-semibold text-ink hover:underline"
+                  >
+                    On “{post.title}”
+                  </Link>
+                )}
+                <p className="mt-2 text-[15px] leading-relaxed whitespace-pre-line text-ink-soft">
+                  {c.body}
+                </p>
+                {c.status === "removed" ? (
+                  <Removed
+                    what="reply"
+                    appealed={c.appealed}
+                    onAppeal={() => postService.appealComment(c.id)}
+                    onDelete={() => {
+                      postService.removeComment(c.id);
+                      toast("Reply deleted");
+                    }}
+                  />
+                ) : (
+                  <p className="tabular mt-3 text-[13px] text-muted">{plural(score(c), "vote")}</p>
+                )}
+              </Panel>
+            </li>
+          );
+        })}
+      </ul>
+      <MoreOnScroll query={pages.replies} />
+    </>
   );
 }
 
@@ -1018,7 +1094,7 @@ function SavedTab() {
       key: st.id,
       kind: "Story",
       title: st.title,
-      href: "/stories",
+      href: `/stories/${st.id}`,
       meta: st.type,
     })),
     ...saved.articles.map((a) => ({
@@ -1078,24 +1154,41 @@ const MENTOR_STATUS: Record<MentorRequestStatus, string> = {
 /** Your mentors, and the members you mentor. Hidden until there is one. */
 function MentoringCard() {
   const s = useStore();
-  // TODO(api): no mentoring API yet; this orders the mock requests.
-  const rows = s.mentorRequests
-    .filter((r) => r.menteeId === "me" || r.mentorId === "me")
-    .sort((a, b) => MENTOR_ORDER[a.status] - MENTOR_ORDER[b.status] || a.daysAgo - b.daysAgo)
-    .map((r) => {
-      const asMentee = r.menteeId === "me";
-      const other = person(s, asMentee ? r.mentorId : r.menteeId);
-      return other
-        ? {
-            id: r.id,
-            other,
-            role: asMentee ? "Your mentor" : "You mentor them",
-            status: MENTOR_STATUS[r.status],
-          }
-        : null;
-    })
-    .filter(Boolean)
-    .slice(0, 4);
+  // GET /profile/me/dashboard orders the card (open first, then finished, newest first, at most
+  // 4, nobody blocked either way). The loaded mentorships stand in until it answers.
+  const dash = useDashboard().data;
+  const fromApi = dash?.mentoring.map((m) => ({
+    id: m.mentorshipId,
+    other:
+      person(s, m.otherMemberHandle ?? "") ??
+      memberFromRef({
+        handle: m.otherMemberHandle,
+        displayName: m.otherMemberDisplayName,
+        avatarCode: m.otherMemberAvatarCode,
+        treeLevel: m.otherMemberTreeLevel,
+      }),
+    role: m.roleText ?? (m.iAmMentor ? "You mentor them" : "Your mentor"),
+    status: m.statusText ?? "",
+  }));
+  const rows =
+    fromApi ??
+    s.mentorRequests
+      .filter((r) => r.menteeId === "me" || r.mentorId === "me")
+      .sort((a, b) => MENTOR_ORDER[a.status] - MENTOR_ORDER[b.status] || a.daysAgo - b.daysAgo)
+      .map((r) => {
+        const asMentee = r.menteeId === "me";
+        const other = person(s, asMentee ? r.mentorId : r.menteeId);
+        return other
+          ? {
+              id: r.id,
+              other,
+              role: asMentee ? "Your mentor" : "You mentor them",
+              status: MENTOR_STATUS[r.status],
+            }
+          : null;
+      })
+      .filter(Boolean)
+      .slice(0, 4);
   if (!rows.length) return null;
   return (
     <Panel className="p-5" aria-labelledby="mentoring-h">
@@ -1123,6 +1216,13 @@ function Dashboard() {
   const params = useSearchParams();
   const router = useRouter();
   const s = useStore();
+  // My posts, stories, replies, groups and saved items, into the cache the tabs read.
+  useMyContent();
+  useGroups();
+  useSaved();
+  useMentorships();
+  // GET /profile/me/dashboard: the tab counts (every page, not just what's loaded).
+  const totals = useDashboardCounts().data;
   const me = meAsMember(s);
   const editing = params.get("edit") === "1";
   const asked = params.get("tab") as Tab | null;
@@ -1180,10 +1280,13 @@ function Dashboard() {
             onChange={open}
             tabs={[
               { id: "overview", label: "Overview" },
-              { id: "posts", label: `Posts ${counts.posts.length + counts.stories.length}` },
-              { id: "replies", label: `Replies ${counts.replies.length}` },
-              { id: "groups", label: `Groups ${counts.groups.length}` },
-              { id: "saved", label: `Saved ${counts.savedCount}` },
+              {
+                id: "posts",
+                label: `Posts ${totals?.posts ?? counts.posts.length + counts.stories.length}`,
+              },
+              { id: "replies", label: `Replies ${totals?.replies ?? counts.replies.length}` },
+              { id: "groups", label: `Groups ${totals?.groups ?? counts.groups.length}` },
+              { id: "saved", label: `Saved ${totals?.saved ?? counts.savedCount}` },
             ]}
           />
           {tab === "posts" && <PostsTab />}

@@ -6,6 +6,7 @@ export { BadgeChip } from "./BadgeChip";
 export { CrisisCard } from "./CrisisCard";
 export { EmptyState } from "./EmptyState";
 export { FormField, type FormFieldProps } from "./FormField";
+export { MoreOnScroll } from "./MoreOnScroll";
 export { PageHeader } from "./PageHeader";
 export { SourceLabel, TagChip, TypeChip } from "./PostChips";
 export { useUnsavedGuard } from "./UnsavedGuard";

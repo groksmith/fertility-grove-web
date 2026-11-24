@@ -13,6 +13,7 @@ import { Name } from "@/components/common/Person";
 import { Avatar, EmptyState, PageHeader } from "@/components/shared";
 import { Panel } from "@/components/ui/panel";
 import { searchSchema } from "@/features/search";
+import { useMemberSearch } from "@/features/social";
 import { useStore } from "@/lib/mock-server";
 
 function Results() {
@@ -24,6 +25,8 @@ function Results() {
     defaultValues: { q: params.get("q") ?? "" },
   });
   const q = useWatch({ control: form.control, name: "q" });
+  // GET /members?q, into the member cache the results read.
+  useMemberSearch(q);
   const term = q.trim().replace(/^@/, "").toLowerCase();
   const results =
     term.length >= 3

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { mockApi } from "../fixtures/api";
 import { watchPageHealth } from "../fixtures/page-health";
 
 // Every signed-out page renders, with no console error, CSP violation, uncaught exception or missing
@@ -17,9 +18,16 @@ const PUBLIC_ROUTES = [
   "/terms",
   "/privacy",
   "/community",
+  "/library",
+  "/accept-terms",
   "/demo",
   "/art",
 ];
+
+// The API is answered by the fixtures (tests/fixtures/api.ts): the guest pages read it too.
+test.beforeEach(async ({ page }) => {
+  await mockApi(page);
+});
 
 for (const route of PUBLIC_ROUTES) {
   test(`${route} renders cleanly`, async ({ page }) => {

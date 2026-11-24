@@ -1,6 +1,8 @@
 // Barrel: named re-exports of what other layers consume.
 
-export { DEMO_PASSWORD } from "@/lib/mock-server";
+export type { MySunlight } from "./api";
+export { commands } from "./commands";
+export { useSessionSync, useSignUpStatus } from "./hooks";
 export {
   type AppealInput,
   appealSchema,
@@ -25,7 +27,7 @@ export {
   meAsMember,
   myInvite,
   person,
-  signUpStatus,
 } from "./selectors";
 export { authService } from "./service";
+export { endSession, homeFor, loadSession, sunlightHistory } from "./session";
 export type { AccountStatus, Badge, Member, MyInvite } from "./types";

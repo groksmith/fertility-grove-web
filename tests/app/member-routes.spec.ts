@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
 
+import { signIn } from "../fixtures/api";
 import { watchPageHealth } from "../fixtures/page-health";
 
-// The member app, signed in as the established demo persona. There is no backend: picking a persona
-// at /demo writes the prototype's state to this page's localStorage, which every route then reads.
+// The member app, signed in against the API fixtures (tests/fixtures/api.ts): every /api/v1 call is
+// answered with a small, fixed member, so the routes render the same way every run, offline.
 
 const MEMBER_ROUTES = [
   "/feed",
@@ -24,9 +25,7 @@ const MEMBER_ROUTES = [
 ];
 
 test.beforeEach(async ({ page }) => {
-  await page.goto("/demo");
-  await page.getByRole("button", { name: /Annie, six weeks in/ }).click();
-  await expect(page).toHaveURL(/\/feed$/);
+  await signIn(page);
 });
 
 for (const route of MEMBER_ROUTES) {

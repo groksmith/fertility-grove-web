@@ -1,12 +1,21 @@
-/* Server-safe reads for server layouts (no client hooks). TODO(api): ask the public group
-   endpoint; the server only knows the sample groups. */
+/* Server-safe reads for server layouts (no client hooks): GET /public/groups/{id}, so a group open
+   to visitors may be listed. Anything that fails stays unlisted, the safe default. */
 
-import { GROUPS } from "@/lib/mock-server/seed/groups";
-import { groupOpenToGuests } from "@/lib/rules/guests";
-import type { Group } from "@/types/domain";
+import { env } from "@/config/env";
 
-/** The group when it is visible to guests (so it may be listed, PRD v1.2 §10), otherwise null. */
-export function listedGroup(id: string): Group | null {
-  const group = GROUPS.find((g) => g.id === id);
-  return group && groupOpenToGuests(group) ? group : null;
+/** The group's name and description when it is visible to guests (PRD v1.2 §10), otherwise null. */
+export async function listedGroup(
+  id: string,
+): Promise<{ name: string; description: string } | null> {
+  try {
+    const r = await fetch(`${env.apiUrl}/api/v1/public/groups/${encodeURIComponent(id)}`, {
+      headers: { Accept: "application/json" },
+      next: { revalidate: 300 },
+    });
+    if (!r.ok) return null;
+    const g = (await r.json()) as { name?: string | null; description?: string | null };
+    return { name: g.name ?? "", description: g.description ?? "" };
+  } catch {
+    return null;
+  }
 }

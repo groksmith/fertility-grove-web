@@ -11,23 +11,25 @@ import { useParams } from "next/navigation";
 import { GroupCover } from "@/components/art/Brand";
 import { ReadingFrame } from "@/components/common/AuthFrame";
 import { JoinBlock, PublicPostCard, useGuestAction } from "@/components/common/Guest";
-import { EmptyState } from "@/components/shared";
+import { EmptyState, MoreOnScroll } from "@/components/shared";
 import { LinkButton } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
-import { publicGroup } from "@/features/posts";
+import { usePublicFeed, usePublicGroup } from "@/features/posts";
 import { plural } from "@/lib/format";
-import { useStore } from "@/lib/mock-server";
 
 const DEFAULT_RULES =
   "Be kind, share your own experience, and keep medical details general. The community guidelines apply here too.";
 
 export default function PublicGroupPage() {
   const { id } = useParams<{ id: string }>();
-  const s = useStore();
   const { ask, ui } = useGuestAction();
-  // TODO(api): the public group endpoint (GET, no sign-in).
-  const data = publicGroup(s, id);
+  // GET /public/groups/{id} and its posts (no sign-in).
+  const query = usePublicGroup(id);
+  // Its posts guests can read, page by page.
+  const feed = usePublicFeed(id);
+  const data = query.data;
 
+  if (query.isPending) return null;
   if (!data) {
     return (
       <ReadingFrame title="Fertility Grove">
@@ -45,7 +47,8 @@ export default function PublicGroupPage() {
     );
   }
 
-  const { group, posts } = data;
+  const { group } = data;
+  const posts = feed.data?.items ?? data.posts;
   return (
     <ReadingFrame title={group.name} lede={group.description}>
       <Link
@@ -95,6 +98,7 @@ export default function PublicGroupPage() {
           ))}
         </ul>
       )}
+      <MoreOnScroll query={feed} />
 
       <JoinBlock title={`Join to read the conversations in ${group.name}`} />
       {ui}

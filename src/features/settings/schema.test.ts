@@ -24,8 +24,13 @@ const profile = {
 
 describe("settings schemas", () => {
   it("checks the new email with the PRD rule", () => {
-    expect(firstErrors(changeEmailSchema, { email: "nope" })).toEqual({ email: MSG.email });
-    expect(firstErrors(changeEmailSchema, { email: "a@b.co" })).toEqual({});
+    expect(firstErrors(changeEmailSchema, { email: "nope", currentPassword: "pw" })).toEqual({
+      email: MSG.email,
+    });
+    expect(firstErrors(changeEmailSchema, { email: "a@b.co", currentPassword: "pw" })).toEqual({});
+    expect(firstErrors(changeEmailSchema, { email: "a@b.co", currentPassword: "" })).toEqual({
+      currentPassword: "Enter your current password.",
+    });
   });
 
   it("reports each password field once", () => {

@@ -3,18 +3,23 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { AuthFrame } from "@/components/common/AuthFrame";
 import { FormField } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { authService, resetPasswordSchema } from "@/features/auth";
-import { useStore } from "@/lib/mock-server";
 import { MSG } from "@/lib/rules/validation";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
-  const expired = useStore((s) => s.linkExpired);
+  // The emailed link carries the account's email and a one-time token.
+  const [link, setLink] = useState<{ email: string; token: string } | null>(null);
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    setLink({ email: q.get("email") ?? "", token: q.get("token") ?? q.get("code") ?? "" });
+  }, []);
+  const [expired, setExpired] = useState(false);
   // Checked on submit only; messages stay until the next submit, and focus stays put.
   const form = useForm({
     resolver: zodResolver(resetPasswordSchema),
@@ -54,12 +59,15 @@ export default function ResetPasswordPage() {
       <form
         noValidate
         className="space-y-5"
-        onSubmit={form.handleSubmit(({ password, confirm }) => {
-          const r = authService.resetPassword(password, confirm);
+        onSubmit={form.handleSubmit(async ({ password, confirm }) => {
+          if (!link?.token) return setExpired(true);
+          const r = await authService.resetPassword(link, password, confirm);
           if (r.ok) setDone(true);
           else {
-            for (const [name, message] of Object.entries(r.errs ?? {}))
+            for (const [name, message] of Object.entries(r.errs))
               form.setError(name as "password" | "confirm", { message });
+            // A used or expired token: the API's sentence names it.
+            if (!Object.keys(r.errs).length) setExpired(true);
           }
         })}
       >

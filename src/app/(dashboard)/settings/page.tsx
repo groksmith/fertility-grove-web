@@ -8,6 +8,7 @@
    apart at the bottom, labelled so nobody mistakes them for the product. */
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Ban,
@@ -36,6 +37,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Choices } from "@/components/ui/choices";
 import { Dialog } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
+import { PasswordInput } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Toggle } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
@@ -90,10 +92,11 @@ function Section({
 }
 
 function Account({ s }: { s: State }) {
+  const router = useRouter();
   // Errors show on submit and stay until the next one; nothing takes focus.
   const emailForm = useForm({
     resolver: zodResolver(changeEmailSchema),
-    defaultValues: { email: "" },
+    defaultValues: { email: "", currentPassword: "" },
     reValidateMode: "onSubmit",
     shouldFocusError: false,
   });
@@ -108,13 +111,22 @@ function Account({ s }: { s: State }) {
     control: pwForm.control,
     name: ["current", "next", "confirm"],
   });
-  const emailSaved = (value: string) => {
-    toast(
-      `We sent a confirmation link to ${value.trim().toLowerCase()}. Your email changes once you open it.`,
-    );
-    emailForm.reset({ email: "" });
+  const emailSaved = (value: string, currentPassword: string) => {
+    // PUT /auth/account: the email changes once the link sent to it is opened.
+    void authService.changeEmail(value, currentPassword).then((r) => {
+      if (!r.ok) {
+        const field = r.errs?.currentPassword ? "currentPassword" : "email";
+        emailForm.setError(field, { message: r.errs?.[field] ?? r.error });
+        return;
+      }
+      toast(
+        `We sent a confirmation link to ${value.trim().toLowerCase()}. Your email changes once you open it.`,
+      );
+      emailForm.reset({ email: "", currentPassword: "" });
+    });
   };
   const pwSaved = () => {
+    // TODO(api): no change-password endpoint yet (docs/backend-tasks.md B2); the form stays a prototype.
     pwForm.reset({ current: "", next: "", confirm: "" });
     toast("Password changed. You've been signed out on other devices.");
   };
@@ -123,11 +135,10 @@ function Account({ s }: { s: State }) {
   const saveEmail = () => {
     const errs = firstErrors(changeEmailSchema, emailForm.getValues());
     emailForm.clearErrors();
-    if (errs.email) {
-      emailForm.setError("email", { message: errs.email });
-      return false;
-    }
-    emailSaved(emailForm.getValues("email"));
+    for (const [name, message] of Object.entries(errs))
+      if (message) emailForm.setError(name as "email" | "currentPassword", { message });
+    if (Object.keys(errs).length) return false;
+    emailSaved(emailForm.getValues("email"), emailForm.getValues("currentPassword"));
     return true;
   };
   const savePw = () => {
@@ -162,7 +173,9 @@ function Account({ s }: { s: State }) {
       </div>
       <form
         className="flex flex-wrap items-end gap-3"
-        onSubmit={emailForm.handleSubmit(({ email }) => emailSaved(email))}
+        onSubmit={emailForm.handleSubmit(({ email, currentPassword }) =>
+          emailSaved(email, currentPassword),
+        )}
       >
         <FormField
           form={emailForm}
@@ -172,6 +185,14 @@ function Account({ s }: { s: State }) {
           className="min-w-0 flex-1 sm:max-w-md"
           autoCapitalize="none"
           autoComplete="email"
+        />
+        <FormField
+          form={emailForm}
+          name="currentPassword"
+          kind="password"
+          label="Current password"
+          className="min-w-0 flex-1 sm:max-w-md"
+          autoComplete="current-password"
         />
         <Button type="submit" variant="secondary">
           Change email
@@ -208,10 +229,24 @@ function Account({ s }: { s: State }) {
         </Button>
       </form>
       <div className="flex flex-wrap gap-2 border-t border-line pt-5">
-        <Button variant="secondary" onClick={() => toast("Signed out of every other device")}>
+        <Button
+          variant="secondary"
+          onClick={async () => {
+            const r = await authService.signOutEverywhere();
+            if (!r.ok) return toast(r.error);
+            // The API ends this session too: sign back in here.
+            router.replace("/login");
+          }}
+        >
           Sign out of all devices
         </Button>
-        <Button variant="ghost" onClick={() => authService.signOut()}>
+        <Button
+          variant="ghost"
+          onClick={async () => {
+            await authService.signOut();
+            router.replace("/login");
+          }}
+        >
           Sign out
         </Button>
       </div>
@@ -600,38 +635,81 @@ function Blocked({ s }: { s: State }) {
 }
 
 function Data({ s }: { s: State }) {
+  // GET /profile/me/data-exports/latest on opening; the file needs the password again.
+  const query = useQuery({
+    queryKey: ["profile", "data-export"],
+    queryFn: () => settingsService.exportStatus(),
+  });
+  const [ask, setAsk] = useState(false);
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string>();
+  const [busy, setBusy] = useState(false);
+  const status = query.isPending ? null : s.dataExport;
   return (
     <Section
       id="data"
       title="Download my data"
       description="A JSON and HTML copy of everything you've shared. We email you when it's ready; the link works for 7 days after you sign in again."
     >
-      {s.dataExport === "none" && (
+      {status === "none" && (
         <Button variant="secondary" onClick={() => settingsService.requestExport()}>
           <Download size={16} /> Request my data
         </Button>
       )}
-      {s.dataExport === "preparing" && (
+      {status === "preparing" && (
         <p className="text-[15px]" aria-live="polite">
           <strong>Preparing your file.</strong>{" "}
           <span className="text-ink-soft">We&apos;ll email you when it&apos;s ready.</span>
         </p>
       )}
-      {s.dataExport === "ready" && (
+      {status === "ready" && (
         <div aria-live="polite">
           <p className="text-[15px]">
             <strong>Your file is ready.</strong>{" "}
             <span className="text-ink-soft">Available for 7 days.</span>
           </p>
-          <Button
-            className="mt-3"
-            variant="secondary"
-            onClick={() => toast("Prototype: the download would start here")}
-          >
+          <Button className="mt-3" variant="secondary" onClick={() => setAsk(true)}>
             <Download size={16} /> Download
           </Button>
         </div>
       )}
+      <Dialog
+        open={ask}
+        onClose={() => {
+          setAsk(false);
+          setPassword("");
+          setError(undefined);
+        }}
+        title="Enter your password"
+        description="For your safety, we ask for your password before handing over your data."
+      >
+        <form
+          noValidate
+          className="space-y-4"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!password) return setError("Enter your current password.");
+            setBusy(true);
+            const r = await settingsService.downloadExport(password);
+            setBusy(false);
+            if (!r.ok) return setError(r.error);
+            setAsk(false);
+            setPassword("");
+            setError(undefined);
+          }}
+        >
+          <Field label="Current password" error={error}>
+            <PasswordInput
+              value={password}
+              autoComplete="current-password"
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </Field>
+          <Button type="submit" disabled={busy}>
+            <Download size={16} /> Download
+          </Button>
+        </form>
+      </Dialog>
     </Section>
   );
 }
@@ -683,9 +761,9 @@ function DeleteAccount({ s }: { s: State }) {
           <Button
             variant="danger"
             disabled={purchased > 0 && !understand}
-            onClick={() => {
-              settingsService.deleteAccount(posts);
-              router.push("/restore");
+            onClick={async () => {
+              const r = await settingsService.deleteAccount(posts);
+              if (r.ok) router.push("/restore");
             }}
           >
             Delete my account

@@ -27,6 +27,8 @@ import {
   mentorMatches,
   mentorRequestSchema,
   mentorService,
+  useMentorMatches,
+  useMentorships,
 } from "@/features/mentors";
 import { settingsService } from "@/features/settings";
 import { useStore } from "@/lib/mock-server";
@@ -65,8 +67,8 @@ function RequestDialog({
     <Dialog open={open} onClose={onClose} title={`Ask ${name} to mentor you`}>
       <form
         className="space-y-5"
-        onSubmit={form.handleSubmit(({ message, helpWith }) => {
-          const r = mentorService.request(mentor.id, message, helpWith);
+        onSubmit={form.handleSubmit(async ({ message, helpWith }) => {
+          const r = await mentorService.request(mentor.id, message, helpWith);
           if (!r.ok) {
             if (r.code === "unconfirmed") handle(r);
             else setError(r.error);
@@ -176,6 +178,15 @@ function MentorCard({ mentor, why }: { mentor: Member; why: string }) {
         <LinkButton href={`/u/${mentor.handle}`} variant="ghost" size="sm" className="ml-auto">
           View profile
         </LinkButton>
+        {!existing && (
+          <button
+            type="button"
+            onClick={() => void mentorService.notForMe(mentor.id)}
+            className="text-[13px] text-muted hover:text-ink"
+          >
+            Not for me
+          </button>
+        )}
       </div>
       <RequestDialog mentor={mentor} open={open} onClose={() => setOpen(false)} />
     </Panel>
@@ -265,8 +276,8 @@ function Connection({ r }: { r: MentorRequest }) {
       <Dialog open={feedback} onClose={() => setFeedback(false)} title="How was mentoring?">
         <form
           className="space-y-5"
-          onSubmit={form.handleSubmit(() => {
-            mentorService.feedback(r.id);
+          onSubmit={form.handleSubmit(({ helpful, thanks }) => {
+            void mentorService.feedback(r.id, helpful[0] ?? "Yes", thanks);
             setFeedback(false);
             toast("Thank you. Your note was sent.");
           })}
@@ -363,6 +374,9 @@ function Incoming({ r }: { r: MentorRequest }) {
 
 export default function MentorsPage() {
   const s = useStore();
+  // GET /mentorships and GET /matches/mentors, into the cache this page reads.
+  useMentorships();
+  useMentorMatches();
   const me = s.me;
   const matches = mentorMatches(s, 3);
   const mine = s.mentorRequests.filter((r) => r.menteeId === "me");

@@ -15,7 +15,7 @@ import { useStore } from "@/lib/mock-server";
 export default function InvitePage() {
   const { code } = useParams<{ code: string }>();
   const router = useRouter();
-  // TODO(api): the backend resolves the code to the member who sent it.
+  // TODO(api): no endpoint resolves a code to its member; only the member's own code is known.
   const owner = inviteOwner(useStore(), decodeURIComponent(code ?? ""));
   const from = owner
     ? displayName(owner)
@@ -44,7 +44,7 @@ export default function InvitePage() {
       <Button
         className="mt-7"
         onClick={() => {
-          authService.arriveWithInvite("beta");
+          authService.arriveWithInvite("beta", decodeURIComponent(code ?? ""));
           router.push("/signup");
         }}
       >

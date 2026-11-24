@@ -1,113 +1,73 @@
-/* The partner endpoints. There is no backend yet: each method reads or writes the mock server and
-   returns what the API returns (or will). A body that becomes a request is marked TODO(api). */
+/* The partner endpoints (PRD §7). The link itself is the API's; the family space it opens is still
+   local (TODO(api): no family-space endpoints yet). */
 
-import { fail, get, notify, ok, type Result, set, uid } from "@/lib/mock-server";
-import { detectCrisis } from "@/lib/rules/crisis";
+import { loadSession } from "@/features/auth";
+import { attempt, crisisOf, fail, failure, ok, type Result } from "@/lib/api/result";
+import { get, set, uid } from "@/lib/mock-server";
+import { notice } from "@/lib/notice";
 import { checks, MSG, normalizeEmail } from "@/lib/rules/validation";
+import { partnerApi } from "./api";
 
 /* ---------------------------------------------------------------- Partner */
 
 export const partnerService = {
-  invite(email: string, note: string): Result {
+  /** POST /profile/me/partner/invites. The note is crisis-checked server-side. */
+  async invite(email: string, note: string): Promise<Result> {
     const s = get();
     if (s.partner.linked) return fail(MSG.alreadyPartnered);
     const e = checks.email(email);
     if (e) return fail(e);
     if (normalizeEmail(email) === s.me.email) return fail(MSG.selfInvite);
-    const crisis = detectCrisis(note);
-    set((x) => ({
-      ...x,
-      partner: {
-        ...x.partner,
-        invite: {
-          email: normalizeEmail(email),
-          note: note.trim() || undefined,
-          status: "pending",
-          resends: 0,
-          daysAgo: 0,
-        },
-      },
-    }));
-    return ok({ crisis });
+    try {
+      const sent = await partnerApi.invite(normalizeEmail(email), note.trim());
+      await loadSession();
+      return ok({ crisis: crisisOf(sent) });
+    } catch (error) {
+      return failure(error);
+    }
   },
-  resend(): Result {
+  /** POST /profile/me/partner/invites/{id}/resend (3 resends at most). */
+  async resend(): Promise<Result> {
     const inv = get().partner.invite;
-    if (!inv) return fail("There's no invite to resend.");
-    if (inv.resends >= 3) return fail(MSG.resendLimit);
-    set((s) => ({
-      ...s,
-      partner: { ...s.partner, invite: { ...inv, resends: inv.resends + 1, daysAgo: 0 } },
-    }));
-    return ok();
+    if (!inv?.id) return fail("There's no invite to resend.");
+    const r = await attempt(() => partnerApi.resend(inv.id ?? ""));
+    if (r.ok) await loadSession();
+    return r;
   },
-  cancel() {
-    set((s) => ({
-      ...s,
-      partner: {
-        ...s.partner,
-        invite: s.partner.invite && { ...s.partner.invite, status: "cancelled" },
-      },
-    }));
+  /** DELETE /profile/me/partner/invites/{id}. */
+  async cancel(): Promise<Result> {
+    const inv = get().partner.invite;
+    if (!inv?.id) return ok();
+    const r = await attempt(() => partnerApi.cancel(inv.id ?? ""));
+    if (r.ok) await loadSession();
+    else notice(r.error);
+    return r;
   },
-  /** Demo: the invited partner accepts. Links accounts and opens the family space. */
-  demoAccept() {
-    set((s) =>
-      notify(
-        {
-          ...s,
-          partner: {
-            linked: true,
-            firstName: "Alex",
-            showsBadge: true,
-            invite: s.partner.invite && { ...s.partner.invite, status: "accepted" },
-          },
-          family: {
-            items: [
-              {
-                id: uid("fi"),
-                kind: "note",
-                refId: "fn-1",
-                title: "Questions for Thursday's consult",
-                owner: "partner",
-                access: "edit",
-                daysAgo: 0,
-              },
-            ],
-            notes: [
-              {
-                id: "fn-1",
-                title: "Questions for Thursday's consult",
-                body: "Ask about recovery time after excision.\nCan I be in the room for the retrieval?\nWhat does the clinic's after-hours line cover?",
-                versions: [
-                  {
-                    id: uid("v"),
-                    title: "Questions for Thursday's consult",
-                    body: "Ask about recovery time after excision.",
-                    by: "partner",
-                    minutesAgo: 120,
-                  },
-                ],
-              },
-            ],
-            activity: [
-              {
-                id: uid("a"),
-                text: "Alex started a family note: Questions for Thursday's consult",
-                minutesAgo: 0,
-              },
-              { id: uid("a"), text: "You and Alex linked your accounts", minutesAgo: 0 },
-            ],
-          },
-        },
-        {
-          kind: "partner",
-          text: "Alex accepted your invite. Your family space is ready.",
-          href: "/family",
-        },
-      ),
-    );
+  /** The partner accepts on their own device; this re-reads the link to pick it up. */
+  async demoAccept() {
+    await loadSession();
   },
-  unlink() {
+  /** GET /partner-invites/{token}: the inviter's first name and note, or null when expired. */
+  async publicInvite(token: string) {
+    try {
+      return await partnerApi.publicInvite(token);
+    } catch {
+      return null;
+    }
+  },
+  /** POST /partner-invites/{token}/accept, signed in as the invited partner. */
+  async accept(token: string): Promise<Result> {
+    const r = await attempt(() => partnerApi.accept(token));
+    if (r.ok) await loadSession();
+    return r;
+  },
+  /** DELETE /profile/me/partner. The family space (local until its API lands) closes too. */
+  async unlink() {
+    const r = await attempt(() => partnerApi.unlink());
+    if (!r.ok) {
+      notice(r.error);
+      return r;
+    }
     set((s) => ({
       ...s,
       partner: { linked: false, firstName: "", showsBadge: false },
@@ -124,5 +84,7 @@ export const partnerService = {
         ],
       },
     }));
+    await loadSession();
+    return r;
   },
 };

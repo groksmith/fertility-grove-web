@@ -1,4 +1,6 @@
 // Barrel: named re-exports of what other layers consume.
+
+export { mentorKeys, useMentorMatches, useMentorships } from "./hooks";
 export {
   type MentorFeedbackInput,
   type MentorRequestInput,

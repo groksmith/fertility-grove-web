@@ -29,6 +29,9 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? "github" : "list",
+  // The dev server compiles each route on its first visit and the member app loads its session
+  // first, so what a page renders can take longer than the 5-second default to appear.
+  expect: { timeout: 15_000 },
   use: {
     baseURL,
     trace: "on-first-retry",

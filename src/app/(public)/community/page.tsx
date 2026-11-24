@@ -9,20 +9,19 @@ import Link from "next/link";
 import { useState } from "react";
 import { ReadingFrame } from "@/components/common/AuthFrame";
 import { JoinBlock, PublicPostCard, useGuestAction } from "@/components/common/Guest";
-import { EmptyState } from "@/components/shared";
+import { EmptyState, MoreOnScroll } from "@/components/shared";
 import { Field } from "@/components/ui/field";
 import { Select } from "@/components/ui/select";
-import { guestGroups, publicFeed } from "@/features/posts";
+import { usePublicFeed, usePublicGroups } from "@/features/posts";
 import { plural } from "@/lib/format";
-import { useStore } from "@/lib/mock-server";
 
 export default function CommunityPage() {
-  const s = useStore();
   const [groupId, setGroupId] = useState("");
   const { ask, ui } = useGuestAction();
-  // TODO(api): the public feed endpoint (GET, no sign-in), filtered by group.
-  const groups = guestGroups(s);
-  const items = publicFeed(s, groupId || undefined);
+  // GET /public/groups and GET /public/feed (no sign-in), filtered by group.
+  const groups = usePublicGroups().data ?? [];
+  const feed = usePublicFeed(groupId || undefined);
+  const items = feed.data?.items ?? [];
 
   return (
     <ReadingFrame
@@ -68,6 +67,7 @@ export default function CommunityPage() {
           ))}
         </ul>
       )}
+      <MoreOnScroll query={feed} />
 
       <JoinBlock title="Join the conversation" />
       {ui}

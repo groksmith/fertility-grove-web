@@ -29,7 +29,6 @@ import {
   familyService,
   familyShareSchema,
 } from "@/features/family";
-import { ARTICLES } from "@/features/learn";
 import { partnerService } from "@/features/partner";
 import { timeAgo } from "@/lib/format";
 import { type State, useStore } from "@/lib/mock-server";
@@ -91,8 +90,8 @@ function Invite({ s }: { s: State }) {
               <Button
                 size="sm"
                 variant="secondary"
-                onClick={() => {
-                  const r = partnerService.resend();
+                onClick={async () => {
+                  const r = await partnerService.resend();
                   toast(r.ok ? "Invite sent again" : r.error);
                 }}
               >
@@ -114,8 +113,8 @@ function Invite({ s }: { s: State }) {
         ) : (
           <form
             className="mt-6 space-y-5"
-            onSubmit={form.handleSubmit(({ email, note }) => {
-              const r = partnerService.invite(email, note);
+            onSubmit={form.handleSubmit(async ({ email, note }) => {
+              const r = await partnerService.invite(email, note);
               if (!r.ok) form.setError("email", { message: r.error });
               else toast("Invite sent");
             })}
@@ -215,7 +214,7 @@ function ShareDialog({ open, onClose, s }: { open: boolean; onClose: () => void;
       edit: true,
     })),
     ...s.savedArticles.map((slug) => {
-      const a = ARTICLES.find((x) => x.slug === slug);
+      const a = s.articles.find((x) => x.slug === slug);
       return {
         id: slug,
         label: a?.title ?? slug,

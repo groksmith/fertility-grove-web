@@ -4,85 +4,25 @@
    Anyone can post without joining, there are no downvotes, and stories stay
    out of the feed unless the member turns them on. */
 
-import { ArrowBigUp, Bookmark, MessageSquare, PenLine } from "lucide-react";
+import { PenLine } from "lucide-react";
 import { useState } from "react";
 import { Spot } from "@/components/art/Scenes";
-import { Name } from "@/components/common/Person";
-import { useResult } from "@/components/common/Safety";
-import { EmptyState, SourceLabel, TagChip, TypeChip } from "@/components/shared";
+import { EmptyState, MoreOnScroll } from "@/components/shared";
 import { LinkButton } from "@/components/ui/button";
 import { ChipSelect } from "@/components/ui/chip-select";
 import { Panel } from "@/components/ui/panel";
 import { WHAT_HELPED } from "@/config/options";
-import { person } from "@/features/auth";
-import { storyService } from "@/features/stories";
-import { timeAgo } from "@/lib/format";
+import { useStories } from "@/features/stories";
 import { useStore } from "@/lib/mock-server";
-import type { Story } from "@/types/domain";
-
-function StoryCard({ story }: { story: Story }) {
-  const s = useStore();
-  const author = person(s, story.authorId);
-  const { handle, ui } = useResult();
-  if (!author) return null;
-  const mine = story.authorId === "me";
-  return (
-    <Panel as="article" className="p-5 sm:p-6">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[14px]">
-        <Name member={author} pronouns={false} />
-        <span className="text-muted">· {timeAgo(story.minutesAgo)}</span>
-      </div>
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        <TypeChip type={story.type} />
-        {story.diagnoses.map((d) => (
-          <TagChip key={d}>{d}</TagChip>
-        ))}
-      </div>
-      <h2 className="mt-3 text-[20px] leading-snug font-semibold">{story.title}</h2>
-      <p className="mt-2 text-[15px] leading-relaxed whitespace-pre-line text-ink">{story.body}</p>
-      {story.whatHelped.length > 0 && (
-        <p className="mt-3 text-[14px] text-muted">
-          <span className="font-semibold text-ink-soft">What helped:</span>{" "}
-          {story.whatHelped.join(", ")}
-        </p>
-      )}
-      <footer className="mt-4 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          disabled={mine}
-          aria-pressed={story.myVote === 1}
-          onClick={() => handle(storyService.upvote(story.id))}
-          className={`press inline-flex h-9 items-center gap-1.5 rounded-full bg-raised px-3 text-[14px] font-semibold ${story.myVote === 1 ? "text-accent" : "text-ink-soft hover:text-ink"} disabled:opacity-50`}
-        >
-          <ArrowBigUp size={18} fill={story.myVote === 1 ? "currentColor" : "none"} />
-          <span className="tabular">{story.up}</span>
-          <span className="sr-only">upvotes</span>
-        </button>
-        <span className="inline-flex h-9 items-center gap-1.5 rounded-full bg-raised px-3 text-[14px] font-semibold text-ink-soft">
-          <MessageSquare size={16} /> <span className="tabular">{story.comments}</span>
-          <span className="sr-only">comments</span>
-        </span>
-        <button
-          type="button"
-          onClick={() => storyService.toggleSave(story.id)}
-          aria-pressed={story.saved}
-          aria-label={story.saved ? "Saved" : "Save"}
-          className={`press grid h-9 w-9 place-items-center rounded-full bg-raised ${story.saved ? "text-accent" : "text-muted hover:text-ink"}`}
-        >
-          <Bookmark size={16} fill={story.saved ? "currentColor" : "none"} />
-        </button>
-        <span className="flex-1" />
-        <SourceLabel source={story.source} />
-      </footer>
-      {ui}
-    </Panel>
-  );
-}
+import { StoryCard } from "./_components/StoryCard";
 
 export default function StoriesPage() {
   const s = useStore();
   const [diag, setDiag] = useState<string[]>([]);
   const [helped, setHelped] = useState<string[]>([]);
+  // GET /success-stories, filtered on the server, into the cache this page reads.
+  useStories();
+  const pages = useStories({ diagnoses: diag, whatHelped: helped });
   const diagnoses = Array.from(new Set(s.stories.flatMap((x) => x.diagnoses)));
   const helpedOptions = WHAT_HELPED.filter((h) => s.stories.some((x) => x.whatHelped.includes(h)));
   const stories = s.stories
@@ -134,6 +74,7 @@ export default function StoriesPage() {
               ))}
             </ul>
           )}
+          {stories.length > 0 && <MoreOnScroll query={pages} />}
         </div>
         <aside className="space-y-4">
           <Panel className="space-y-5 p-5">

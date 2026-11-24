@@ -13,7 +13,7 @@ import { useState } from "react";
 import { GroupCover, groupHue } from "@/components/art/Brand";
 import { Spot } from "@/components/art/Scenes";
 import { PostCard } from "@/components/common/PostCard";
-import { Avatar, EmptyState } from "@/components/shared";
+import { Avatar, EmptyState, MoreOnScroll } from "@/components/shared";
 import { Button, LinkButton } from "@/components/ui/button";
 import { ChipSelect } from "@/components/ui/chip-select";
 import { Menu } from "@/components/ui/dropdown-menu";
@@ -21,9 +21,9 @@ import { Panel } from "@/components/ui/panel";
 import { Segmented } from "@/components/ui/segmented";
 import { toast } from "@/components/ui/toast";
 import { POST_TYPES } from "@/config/options";
-import { groupMatches, groupService } from "@/features/groups";
+import { groupMatches, groupService, useGroup, useGroupMatches } from "@/features/groups";
 import { articleCover, readingFor } from "@/features/learn";
-import { commentCount, score, visiblePosts } from "@/features/posts";
+import { commentCount, score, useGroupPosts, visiblePosts } from "@/features/posts";
 import { useStore } from "@/lib/mock-server";
 import type { PostType } from "@/types/domain";
 
@@ -35,9 +35,14 @@ export default function GroupPage() {
   const [sort, setSort] = useState<Sort>("newest");
   const [picked, setPicked] = useState<string[]>([]);
   const [types, setTypes] = useState<PostType[]>([]);
+  // GET /groups/{id} and its posts, into the cache this page reads.
+  const groupQuery = useGroup(id);
+  const postPages = useGroupPosts(id, sort, groupQuery.data?.canReadPosts !== false);
+  useGroupMatches("GroupsPage");
   const group = s.groups.find((g) => g.id === id);
 
-  if (!group || group.status === "draft") {
+  if (!group && groupQuery.isPending) return null;
+  if (!group || group.status === "draft" || groupQuery.data === null) {
     return (
       <EmptyState
         art="lens"
@@ -62,7 +67,7 @@ export default function GroupPage() {
   );
 
   const commentsOf = (pid: string) => commentCount(s, pid);
-  const reading = readingFor(group.id);
+  const reading = readingFor(group, s.articles);
   const groupPosts = visiblePosts(s).filter((p) => p.groupId === group.id);
   // The tags people actually use here, most used first. A post shows if it has any of the ones picked.
   const tagCounts = new Map<string, number>();
@@ -303,13 +308,16 @@ export default function GroupPage() {
                 }
               />
             ) : (
-              <ul className="space-y-4">
-                {posts.map((p) => (
-                  <li key={p.id}>
-                    <PostCard post={p} showGroup={false} />
-                  </li>
-                ))}
-              </ul>
+              <>
+                <ul className="space-y-4">
+                  {posts.map((p) => (
+                    <li key={p.id}>
+                      <PostCard post={p} showGroup={false} />
+                    </li>
+                  ))}
+                </ul>
+                <MoreOnScroll query={postPages} />
+              </>
             )}
           </div>
           <aside className="space-y-4">

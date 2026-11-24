@@ -1,4 +1,13 @@
 // Barrel: named re-exports of what other layers consume.
+
+export {
+  type DashboardCounts,
+  type DashboardView,
+  useDashboard,
+  useDashboardCounts,
+  useProfilePreview,
+  useSunlightHistory,
+} from "./hooks";
 export {
   type ChangeEmailInput,
   type ChangePasswordInput,

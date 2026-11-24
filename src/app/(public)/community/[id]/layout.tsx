@@ -9,7 +9,7 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
-  const group = listedGroup(id);
+  const group = await listedGroup(id);
   if (group) {
     return {
       title: `${group.name} · Fertility Grove`,

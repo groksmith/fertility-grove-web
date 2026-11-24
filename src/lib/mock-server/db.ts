@@ -8,6 +8,7 @@ import { levelFor } from "@/lib/rules/sunlight";
 import type {
   AccountStatus,
   AppointmentList,
+  Article,
   Comment,
   CommunityId,
   Conversation,
@@ -108,6 +109,27 @@ export interface Me {
 
 export interface State {
   persona: "new" | "member" | "partner" | "mentor";
+  /** The API session: "none" signed out, "loading" while `me` is fetched, "ready" once filled. */
+  session: "none" | "loading" | "ready";
+  /** Filled from the API: the member must accept this Terms version before anything else. */
+  terms?: { mustAccept: boolean; version: string };
+  /** An invite code or partner-invite token picked up from a link, sent with sign-up. */
+  pendingInvite?: { code?: string; partnerToken?: string; inviterFirstName?: string };
+  /** A new email waiting for confirmation (PUT /auth/account). */
+  pendingEmail?: string;
+  /** GET /matches/posts: up to 3 a day from matched groups, with the reason shown. */
+  matchedPosts?: { postId: string; reason: string }[];
+  /** GET /matches/groups: matched groups, best first, with the reason shown. */
+  matchedGroups?: { groupId: string; why: string }[];
+  /** GET /matches/peers and /matches/mentors: matched people (by handle), with the reason. */
+  matchedPeers?: { id: string; why: string }[];
+  matchedMentors?: { id: string; why: string }[];
+  /** GET /conversations `requestCount`: message requests waiting (any filter). */
+  conversationRequests?: number;
+  /** GET /notifications/unread-count: the bell number (polled). */
+  unreadNotificationCount?: number;
+  /** GET /matches/mentors: false when the member hasn't asked for a mentor. */
+  wantsMentorMatches?: boolean;
   signedIn: boolean;
   /** 1–8 while onboarding, 9 when complete. */
   step: number;
@@ -133,6 +155,12 @@ export interface State {
   posts: Post[];
   comments: Comment[];
   stories: Story[];
+  /** Learn articles the API returned (GET /learn/articles, /learn/articles/{id}). */
+  articles: Article[];
+  /** GET /learn/recommended: up to 6, each with its reason. */
+  recommendedArticles?: { slug: string; why: string }[];
+  /** GET /profile/me/saved/suggestions: "Worth saving". */
+  suggestedArticles?: string[];
   savedArticles: string[];
   articleHelpful: Record<string, "yes" | "no">;
   conversations: Conversation[];
@@ -274,6 +302,7 @@ const MENTOR_ME: Me = {
 
 function base(): Omit<State, "persona" | "me"> {
   return {
+    session: "none",
     signedIn: false,
     step: 1,
     keepSignedIn: false,
@@ -293,6 +322,7 @@ function base(): Omit<State, "persona" | "me"> {
     posts: POSTS.filter((p) => p.authorId !== "me"),
     comments: COMMENTS.filter((c) => c.authorId !== "me"),
     stories: STORIES,
+    articles: [],
     savedArticles: [],
     articleHelpful: {},
     conversations: CONVERSATIONS.filter((c) => c.kind === "support"),
@@ -375,10 +405,48 @@ export const ARTICLE_SLUGS = ARTICLES.map((a) => a.slug);
 
 /* ----------------------------------------------------------------- Store */
 
-/* v3 (PRD v1.2): guest browsing fields, removed items and invite codes are
-   new in the sample data, so older saved states start over. */
-const KEY = "fertility-grove-state-v3";
-const initial = persona("member");
+/* v4: the backend fills the signed-in member's slices; saved prototype personas start over. */
+const KEY = "fertility-grove-state-v4";
+
+/** Signed out, before the API session (if any) loads. The features the backend doesn't serve yet
+    (Grove Guide, credits, family space…) keep their sample data. TODO(api). */
+export function signedOut(): State {
+  const sample = persona("member");
+  return {
+    ...sample,
+    persona: "new",
+    session: "none",
+    signedIn: false,
+    step: 1,
+    me: EMPTY_ME,
+    // The API fills these as screens ask for them.
+    // The team account behind the support conversation (mock, TODO(api)) stays.
+    members: sample.members.filter((m) => m.badges.includes("team")),
+    groups: [],
+    posts: [],
+    comments: [],
+    stories: [],
+    mentorRequests: [],
+    notifications: [],
+    conversations: sample.conversations.filter((c) => c.kind === "support"),
+    matchedPosts: undefined,
+    matchedGroups: undefined,
+    savedArticles: [],
+    articleHelpful: {},
+    following: [],
+    followers: [],
+    blocked: [],
+    joined: [],
+    muted: [],
+    notForMe: [],
+    partner: { linked: false, firstName: "", showsBadge: false },
+    pendingLevelUp: undefined,
+    deletion: undefined,
+    suspension: undefined,
+    dataExport: "none",
+  };
+}
+const initial = signedOut();
 let current: State = initial;
 let loaded = false;
 const listeners = new Set<() => void>();

@@ -1,4 +1,6 @@
 // Barrel: named re-exports of what other layers consume.
+
+export { socialKeys, useMember, useMemberSearch, usePeerMatches } from "./hooks";
 export { type ReportInput, reportSchema } from "./schema";
 export { peopleMatches } from "./selectors";
 export { socialService } from "./service";

@@ -10,6 +10,7 @@ export {
   replace,
   type State,
   set,
+  signedOut,
   useHydrated,
   useStore,
 } from "./db";

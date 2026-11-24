@@ -12,15 +12,14 @@ import Link from "next/link";
 import { useState } from "react";
 import { Name } from "@/components/common/Person";
 import { PostCard } from "@/components/common/PostCard";
-import { EmptyState, PageHeader, TypeChip } from "@/components/shared";
+import { EmptyState, MoreOnScroll, PageHeader, TypeChip } from "@/components/shared";
 import { LinkButton } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { Tabs } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/toast";
-import { journey, person } from "@/features/auth";
-import { ARTICLES, articleCover } from "@/features/learn";
-import { savedItems } from "@/features/posts";
-import { settingsService } from "@/features/settings";
+import { person } from "@/features/auth";
+import { articleCover, learnService, useSavedArticles } from "@/features/learn";
+import { savedItems, useSaved } from "@/features/posts";
 import { storyService } from "@/features/stories";
 import { plural } from "@/lib/format";
 import { useStore } from "@/lib/mock-server";
@@ -106,6 +105,9 @@ function ArticleRow({ a, onRemove }: { a: Article; onRemove: () => void }) {
 
 export default function SavedPage() {
   const s = useStore();
+  // GET /profile/me/saved, the saved articles and the "Worth saving" suggestions.
+  const postPages = useSaved();
+  const articlePages = useSavedArticles();
   const { posts, stories, articles } = savedItems(s);
   const [kind, setKind] = useState<Kind>("all");
   const { leaving, fold } = useFoldAway();
@@ -124,15 +126,10 @@ export default function SavedPage() {
 
   // While the list is short, offer reviewed articles matched to the member:
   // their diagnosis only counts while health-data consent is on.
-  const dx = journey(s).diagnoses;
-  const suggestions = ARTICLES.filter(
-    (a) => !s.savedArticles.includes(a.slug) && (a.status ?? "published") === "published",
-  )
-    .sort(
-      (a, b) =>
-        Number(b.diagnoses.some((d) => dx.includes(d))) -
-        Number(a.diagnoses.some((d) => dx.includes(d))),
-    )
+  // GET /profile/me/saved/suggestions picks them (empty once 4+ items are saved).
+  const suggestions = (s.suggestedArticles ?? [])
+    .filter((id) => !s.savedArticles.includes(id))
+    .flatMap((id) => s.articles.filter((a) => a.slug === id))
     .slice(0, 3);
 
   const lists = s.appointmentLists.length;
@@ -188,11 +185,7 @@ export default function SavedPage() {
                           <ArticleRow
                             a={a!}
                             onRemove={() =>
-                              fold(
-                                k,
-                                () => settingsService.saveArticle(a!.slug),
-                                "Removed from saved",
-                              )
+                              fold(k, () => learnService.toggleSave(a!.slug), "Removed from saved")
                             }
                           />
                         </div>
@@ -224,7 +217,7 @@ export default function SavedPage() {
                                 {author && <Name member={author} pronouns={false} />}
                               </div>
                               <Link
-                                href="/stories"
+                                href={`/stories/${x.id}`}
                                 className="mt-2 block text-[16px] leading-snug font-semibold text-ink hover:underline"
                               >
                                 {x.title}
@@ -246,6 +239,9 @@ export default function SavedPage() {
                     );
                   })}
               </ul>
+              {/* Saved posts and stories, then saved articles, load as the list scrolls. */}
+              {kind !== "articles" && <MoreOnScroll query={postPages} />}
+              {kind !== "posts" && kind !== "stories" && <MoreOnScroll query={articlePages} />}
               {empty && (
                 <p className="mt-6 rounded-[20px] border border-dashed border-line-strong p-6 text-center text-[15px] text-muted">
                   No saved {kind} yet. Tap the bookmark on one and it shows up here.
@@ -291,7 +287,7 @@ export default function SavedPage() {
                         <SaveButton
                           saved={false}
                           onClick={() => {
-                            settingsService.saveArticle(a.slug);
+                            learnService.toggleSave(a.slug);
                             toast("Saved");
                           }}
                           label={`Save ${a.title}`}

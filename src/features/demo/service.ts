@@ -1,16 +1,22 @@
+import { endSession } from "@/features/auth";
 import { notify, persona, replace, type State, set, sunlight, uid } from "@/lib/mock-server";
 import { MENTOR_REQUESTS } from "@/lib/mock-server/seed/social";
 import { MSG } from "@/lib/rules/validation";
 
 /* ------------------------------------------------------------------- Demo */
 
+/* Prototype tools only. A persona is sample data with no API session behind it, so picking one
+   first ends any real session (its tokens never act for a sample member). TODO(api): retire these
+   tools once the backend covers everything; see the API coverage notes in CLAUDE.md. */
 export const demoService = {
   persona(kind: State["persona"]) {
+    endSession();
     replace(persona(kind));
   },
   reset() {
+    endSession();
     try {
-      window.localStorage.removeItem("fertility-grove-state-v3");
+      window.localStorage.removeItem("fertility-grove-state-v4");
     } catch {
       /* ignore */
     }

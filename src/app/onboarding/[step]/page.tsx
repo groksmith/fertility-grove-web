@@ -40,10 +40,10 @@ import {
   TREATMENTS,
 } from "@/config/options";
 import { journey, meAsMember } from "@/features/auth";
-import { groupMatches, groupService } from "@/features/groups";
+import { groupMatches, groupService, useGroupMatches } from "@/features/groups";
 import { GUIDE_STARTERS } from "@/features/guide";
-import { ARTICLES } from "@/features/learn";
-import { mentorMatches } from "@/features/mentors";
+import { learnService, useRecommendedArticles } from "@/features/learn";
+import { mentorMatches, useMentorMatches } from "@/features/mentors";
 import {
   ONBOARDING_STEP_FIELDS,
   type OnboardingInput,
@@ -53,7 +53,7 @@ import {
 } from "@/features/onboarding";
 import { partnerService } from "@/features/partner";
 import { firstErrors, settingsService } from "@/features/settings";
-import { peopleMatches, socialService } from "@/features/social";
+import { peopleMatches, socialService, usePeerMatches } from "@/features/social";
 import { get, type Me, useHydrated, useStore } from "@/lib/mock-server";
 import { checks } from "@/lib/rules/validation";
 import type { CommunityId, MessagePolicy } from "@/types/domain";
@@ -156,12 +156,10 @@ function initialDraft(): Draft {
       : partner
         ? ["Support as a partner, or for my partner"]
         : [],
-    // Saved before this was multi-select: a single answer becomes a one-item list.
-    connectStyle: Array.isArray(me.connectStyle)
-      ? me.connectStyle
-      : me.connectStyle
-        ? [me.connectStyle]
-        : [],
+    // One choice (PRD §5); kept as a one-item list.
+    connectStyle: (Array.isArray(me.connectStyle) ? me.connectStyle : [me.connectStyle])
+      .filter(Boolean)
+      .slice(0, 1),
     community: me.community || (partner ? "partners" : ""),
     firstName: me.firstName,
     lastName: me.lastName,
@@ -494,7 +492,6 @@ function Step4({ form }: StepProps) {
         render={({ field }) => (
           <Choices
             legend="How I like to connect"
-            multi
             options={CONNECT_STYLES}
             value={field.value}
             onChange={field.onChange}
@@ -910,12 +907,22 @@ function Step7({ form }: StepProps) {
 
 function Step8({ finish, preview }: { finish: (to: string) => void; preview: boolean }) {
   const s = useStore();
+  // Matches open once onboarding is complete, which this screen does as it opens.
+  const complete = s.step >= 9 && !preview;
+  useGroupMatches("Onboarding", complete);
+  usePeerMatches(complete);
+  useMentorMatches(complete && s.me.wantMentor);
+  useRecommendedArticles(complete);
   const groups = groupMatches(s, 5);
   const people = peopleMatches(s, 3);
   const mentors = s.me.wantMentor ? mentorMatches(s, 3) : [];
   const j = journey(s);
-  const articles = ARTICLES.filter((a) => a.diagnoses.some((d) => j.diagnoses.includes(d)))
-    .concat(ARTICLES)
+  // GET /learn/recommended (personal when health answers allow), else the library's first.
+  const recommended = (s.recommendedArticles ?? []).flatMap((r) =>
+    s.articles.filter((a) => a.slug === r.slug),
+  );
+  const articles = recommended
+    .concat(s.articles)
     .filter((a, i, all) => all.indexOf(a) === i)
     .slice(0, 3);
   const starters =
@@ -1060,7 +1067,7 @@ function Step8({ finish, preview }: { finish: (to: string) => void; preview: boo
                     size="sm"
                     variant={saved ? "quiet" : "secondary"}
                     aria-pressed={saved}
-                    onClick={() => settingsService.saveArticle(a.slug)}
+                    onClick={() => learnService.toggleSave(a.slug)}
                   >
                     {saved ? "Saved" : "Save"}
                   </Button>
@@ -1121,12 +1128,12 @@ function Step8({ finish, preview }: { finish: (to: string) => void; preview: boo
               <Button
                 variant="secondary"
                 className="sm:mt-[30px]"
-                onClick={() => {
+                onClick={async () => {
                   if (preview) {
                     toast("Preview only: nothing was sent");
                     return;
                   }
-                  const r = partnerService.invite(inviteEmail, "");
+                  const r = await partnerService.invite(inviteEmail, "");
                   if (!r.ok) setInviteErr(r.error);
                   else setInvited(true);
                 }}
@@ -1156,7 +1163,8 @@ function OnboardingStep() {
   if (hydrated && step === 8 && s.step === 8 && !onFinal) setOnFinal(true);
 
   // Signed out mid-onboarding: sign in, and onboarding resumes where it stopped.
-  const target = !hydrated
+  const ready = hydrated && s.session !== "loading";
+  const target = !ready
     ? null
     : !s.signedIn && !preview
       ? "/login"
@@ -1170,7 +1178,7 @@ function OnboardingStep() {
     if (target) router.replace(target);
   }, [target, router]);
 
-  if (!hydrated || target) return <div className="min-h-dvh" aria-busy="true" />;
+  if (!ready || target) return <div className="min-h-dvh" aria-busy="true" />;
   return <StepView key={step} step={step} preview={preview} />;
 }
 
@@ -1209,7 +1217,7 @@ function StepView({ step, preview }: { step: number; preview: boolean }) {
 
   // Validated synchronously, as before, so the summary shows in the same frame as the click and
   // takes focus on the next one.
-  const next = () => {
+  const next = async () => {
     const schema = onboardingStepSchemas[step as keyof typeof onboardingStepSchemas] as
       | typeof onboardingSchema
       | undefined;
@@ -1222,22 +1230,40 @@ function StepView({ step, preview }: { step: number; preview: boolean }) {
       requestAnimationFrame(() => summary.current?.focus());
       return;
     }
-    if (!preview) onboardingService.save(step, patchFor(step, form.getValues()));
-    go(step + 1);
-  };
-
-  const skip = () => {
-    // Skipping saves nothing from the screen, except screen 7, which keeps its defaults.
     if (!preview) {
-      if (step === 2) onboardingService.save(2, {}, ["diagnosis", "path"]);
-      else onboardingService.save(7, patchFor(7, initialDraft()));
+      const r = await onboardingService.save(step, patchFor(step, form.getValues()));
+      if (!r.ok) {
+        // A refusal the screen can't check itself (a taken handle): shown like any other error.
+        const fieldErrs = Object.entries(r.errs ?? {}).filter(([name]) =>
+          fields.includes(name as keyof OnboardingInput),
+        );
+        if (fieldErrs.length)
+          for (const [name, message] of fieldErrs)
+            form.setError(name as keyof OnboardingInput, { message });
+        else toast(r.error);
+        requestAnimationFrame(() => summary.current?.focus());
+        return;
+      }
     }
     go(step + 1);
   };
 
-  const finish = (to: string) => {
+  const skip = async () => {
+    // Skipping saves nothing from the screen, except screen 7, which keeps its defaults.
     if (!preview) {
-      onboardingService.completeOnboarding();
+      const r =
+        step === 2
+          ? await onboardingService.save(2, {}, ["diagnosis", "path"])
+          : await onboardingService.save(7, patchFor(7, initialDraft()));
+      if (!r.ok) return toast(r.error);
+    }
+    go(step + 1);
+  };
+
+  const finish = async (to: string) => {
+    if (!preview) {
+      const r = await onboardingService.completeOnboarding();
+      if (!r.ok) return toast(r.error);
       // Screen 8 already celebrated the Seed; don't repeat it on Home.
       settingsService.acknowledgeLevelUp();
     }
