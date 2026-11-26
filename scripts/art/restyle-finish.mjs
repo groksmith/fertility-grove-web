@@ -6,6 +6,8 @@
 // one at its old file's size, next to it, as <name>-v2.webp:
 //   - paintings and covers: resized to the old size
 //   - cut-outs: magenta keyed away, trimmed (8px pad), set to the old width
+//     (the Messages envelopes are new designs, fresh rather than vintage:
+//     prompts-restyle/envelope-sealed.txt and letter-open.txt)
 //   - leaves: the row split into six, each at most 160px, as cozy/leaf-<n>-v2
 //   - the app's five trees (TREE_SRC): cut from the stage row (stages-cut.mjs
 //     input), each filling its 640 square on the ground, as art/tree-<lvl>-v2
@@ -27,7 +29,7 @@ if (!DIR || !ROW) {
 
 const PAINTINGS = ["landing/stage-trying", "landing/stage-waiting", "landing/stage-treatment", "landing/stage-break", "landing/stage-partner", "landing/partners", "gouache/privacy-gate-round", "learn/endometriosis-topic", "learn/pcos-topic", "learn/diminished-ovarian-reserve-topic", "learn/male-factor-topic", "learn/recurrent-pregnancy-loss-topic", "learn/unexplained-infertility-topic"];
 // (The Grove Guide card keeps its original picture, way-guide-closeup.webp, by choice.)
-const CUTOUTS = ["landing/way-mentors-bench", "landing/way-groups", "landing/way-stories", "landing/way-family"];
+const CUTOUTS = ["landing/way-mentors-bench", "landing/way-groups", "landing/way-stories", "landing/way-family", "messages/envelope-sealed", "messages/letter-open"];
 
 const generated = (path) => join(DIR, `${path.split("/")[1]}.png`);
 

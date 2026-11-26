@@ -3,11 +3,12 @@
 /* Refer a friend, as sending them seeds. An open envelope waits with a small
    handful of seeds in its mouth. Copying the link plays the whole gesture once:
    the seeds are pushed down into the envelope, the lowest first, the flap folds
-   shut, a wax seal presses on, and the envelope lifts away, then a fresh one
+   shut, a little orange seal presses on, and the envelope lifts away, then a fresh one
    settles in for the next friend.
 
    The envelope is one painting cut into layers (public/assets/brand/refer/, prompts in
-   scripts/art/prompts-refer/): the open flap folds down to edge-on, and the
+   scripts/art/prompts-refer/), made fresh white like the Messages envelopes by
+   scripts/art/refer-fresh.mjs (the -v2 layers): the open flap folds down to edge-on, and the
    closed flap, a separate layer above the pocket, carries on from there, so
    the seeds really go behind the paper. Timings live with the env-* keyframes
    in globals.css. Copying while it plays still copies, without restarting it.
@@ -39,7 +40,7 @@ const SEEDS = [
 function Layer({ name, className }: { name: string; className: string }) {
   return (
     <Image
-      src={`${DIR}/${name}.webp`}
+      src={`${DIR}/${name}-v2.webp`}
       alt=""
       fill
       unoptimized
@@ -113,7 +114,7 @@ export function ReferFriend() {
             <Layer name="flap-closed" className="env-flap-closed" />
             <span className="env-seal">
               <Image
-                src={`${DIR}/seal.webp`}
+                src={`${DIR}/seal-v2.webp`}
                 alt=""
                 width={260}
                 height={264}

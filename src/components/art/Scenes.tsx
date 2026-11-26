@@ -84,8 +84,8 @@ const SPOTS: Record<SpotKind, Piece[]> = {
    Two birds on a branch are for people who haven't talked yet. */
 const PAINTED: Partial<Record<SpotKind, string>> = {
   birds: "/assets/brand/cozy/e-birds.webp",
-  envelope: "/assets/brand/messages/envelope-sealed.webp",
-  letter: "/assets/brand/messages/letter-open.webp",
+  envelope: "/assets/brand/messages/envelope-sealed-v2.webp",
+  letter: "/assets/brand/messages/letter-open-v2.webp",
 };
 
 export function Spot({
