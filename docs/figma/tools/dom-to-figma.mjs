@@ -10,10 +10,11 @@
 //   Rows stack on a fixed pitch (FG_PITCH, in list order) so one screen can be
 //   rebuilt in place. FG_STACK=1 stacks rows by their real height instead
 //   (FG_Y0 start, FG_GAP between rows). FG_REPLACE=1 deletes a frame of the same
-//   name on the page before building its replacement.
+//   name on the page before building its replacement. FG_X0 shifts the row right.
 //   Pages render at rest: reduced motion, every reveal shown, every image loaded.
 import { spawn } from "node:child_process";
-import { readFileSync, mkdtempSync, existsSync } from "node:fs";
+import { readFileSync, mkdtempSync, existsSync, statSync, mkdirSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -89,12 +90,43 @@ async function capture(path, size, session = "in", opts = {}) {
   const full = await ev("Math.max(document.documentElement.scrollHeight, document.body.scrollHeight)");
   // Pages sized to the window (the landing hero is a full screen) keep a normal
   // window: everything below the fold is still read at its page position.
-  if (opts.window === "keep") return ev(EXTRACT);
+  if (opts.window === "keep") return renderGradients(await ev(EXTRACT));
   // The window as tall as the page: fixed bars sit at the page's ends.
   await cdp("Emulation.setDeviceMetricsOverride", { width: size.w, height: Math.max(size.h, Math.min(full, 20000)), deviceScaleFactor: 1, mobile });
   await sleep(700);
   await ev(SETTLE);
-  return ev(EXTRACT);
+  return renderGradients(await ev(EXTRACT));
+}
+
+/** The plugin draws solid fills only, so each CSS gradient the extractor found
+ *  is drawn by Chrome on a transparent page, at its size, and sent as a PNG. */
+const GRADIENTS = join(tmpdir(), "fg-figma-gradients");
+async function renderGradients(tree) {
+  const found = [];
+  const walk = (n) => {
+    if (n.gradient) found.push(n);
+    (n.children || []).forEach(walk);
+  };
+  walk(tree);
+  if (!found.length) return tree;
+  mkdirSync(GRADIENTS, { recursive: true });
+  await cdp("Page.navigate", { url: "about:blank" });
+  await sleep(300);
+  await cdp("Emulation.setDefaultBackgroundColorOverride", { color: { r: 0, g: 0, b: 0, a: 0 } });
+  for (const n of found) {
+    const file = join(GRADIENTS, `${createHash("sha1").update(`${n.gradient}|${n.width}x${n.height}`).digest("hex")}.png`);
+    if (!existsSync(file)) {
+      await ev(`document.body.style.cssText = "margin:0;background:transparent";
+        document.body.innerHTML = '<div id="g" style="width:${n.width}px;height:${n.height}px"></div>';
+        document.getElementById("g").style.backgroundImage = ${JSON.stringify(n.gradient)}; true`);
+      const shot = await cdp("Page.captureScreenshot", { format: "png", clip: { x: 0, y: 0, width: n.width, height: n.height, scale: 1 }, captureBeyondViewport: true });
+      writeFileSync(file, Buffer.from(shot.result.data, "base64"));
+    }
+    n.imageFile = file;
+    delete n.gradient;
+  }
+  await cdp("Emulation.setDefaultBackgroundColorOverride", {});
+  return tree;
 }
 
 // ------------------------------------------------------------ to Figma
@@ -108,29 +140,47 @@ function resolve(n) {
     const img = Img(file, n.width, n.height, rest);
     return img;
   }
-  if (n.children) n.children = n.children.map(resolve).filter(Boolean);
+  if (n.imageFile) {
+    const { imageFile, ...rest } = n;
+    return Img(imageFile, n.width, n.height, rest);
+  }
+  if (n.children) {
+    // Fixed and sticky bars (the site nav) go last, so they draw on top.
+    const kids = n.children.map(resolve).filter(Boolean);
+    n.children = [...kids.filter((c) => !c.onTop), ...kids.filter((c) => c.onTop)];
+    for (const c of n.children) delete c.onTop;
+  }
   return n;
 }
 
-/** Split a frame's children into calls of roughly `limit` bytes each. */
-function batches(children, limit = 6e6) {
-  const out = [];
+/** Bytes a node costs to send: its JSON plus its images as base64. */
+const cost = (n) => (n.image ? statSync(n.image).size * 1.4 : 0) + JSON.stringify({ ...n, children: undefined }).length + (n.children || []).reduce((a, c) => a + cost(c), 0);
+
+/** Build `nodes` under `parentId` in calls of at most `limit` bytes. A node too
+ *  heavy for one call goes in as an empty frame, then its children follow. */
+async function place(nodes, parentId, limit = 3e6) {
   let cur = [];
   let size = 0;
-  for (const c of children) {
-    const s = JSON.stringify(c).length + (c.image ? 4e5 : 0) * countImages(c);
-    if (cur.length && size + s > limit) {
-      out.push(cur);
-      cur = [];
-      size = 0;
+  const flush = async () => {
+    if (cur.length) await build(cur, { parentId });
+    cur = [];
+    size = 0;
+  };
+  for (const c of nodes) {
+    const s = cost(c);
+    if (s > limit && c.children?.length) {
+      await flush();
+      const { children, ...shell } = c;
+      const res = await build([{ ...shell, children: [] }], { parentId });
+      await place(children, res.roots[0].id, limit);
+      continue;
     }
+    if (cur.length && size + s > limit) await flush();
     cur.push(c);
     size += s;
   }
-  if (cur.length) out.push(cur);
-  return out;
+  await flush();
 }
-const countImages = (n) => (n.image ? 1 : 0) + (n.children || []).reduce((a, c) => a + countImages(c), 0);
 
 await fig("set_current_page", { pageId: page });
 const STACK = process.env.FG_STACK === "1";
@@ -144,7 +194,7 @@ if (process.env.FG_REPLACE === "1") {
 const log = [];
 for (const [row, [area, name, path, session, opts]] of SCREENS.entries()) {
   if (only.length && !only.includes(name)) continue;
-  let x = 0;
+  let x = Number(process.env.FG_X0 || 0);
   const trees = [];
   for (const size of SIZES) trees.push(await capture(path, size, session, opts));
   const y = STACK ? stackY : row * PITCH;
@@ -157,7 +207,7 @@ for (const [row, [area, name, path, session, opts]] of SCREENS.entries()) {
     const res = await build([board]);
     const id = res.roots[0].id;
     const kids = tree.children.map(resolve).filter(Boolean);
-    for (const part of batches(kids)) await build(part, { parentId: id });
+    await place(kids, id);
     log.push(`${name} / ${size.key}: ${id} ${tree.width}x${tree.height}`);
     console.log(log.at(-1));
     x += size.w + 120;

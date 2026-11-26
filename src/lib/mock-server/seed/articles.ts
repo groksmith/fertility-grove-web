@@ -327,7 +327,7 @@ export const ARTICLES: Article[] = [
 export const articleBySlug = (slug: string) => ARTICLES.find((a) => a.slug === slug);
 
 /** Each article's painted cover: its topic as one painted subject, on its tint. */
-export const articleCover = (slug: string) => `/assets/brand/learn/${slug}-topic.webp`;
+export const articleCover = (slug: string) => `/assets/brand/learn/${slug}-topic-v2.webp`;
 
 /** The anchor of an article section, e.g. /learn/pcos#common-treatment-paths. */
 export const sectionId = (heading: string) =>

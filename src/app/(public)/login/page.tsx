@@ -29,8 +29,8 @@ export default function LoginPage() {
       footer={
         <p>
           New here?{" "}
-          <Link href="/signup" className="font-semibold text-accent underline">
-            Create an account
+          <Link href="/#waitlist" className="font-semibold text-accent underline">
+            Join Waitlist
           </Link>
         </p>
       }

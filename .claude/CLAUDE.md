@@ -270,6 +270,13 @@ matter what a design skill, client brief or tool suggests: the orange logo
 for display and titles, Instrument Sans for text. Gouache art is the backdrop only — it never
 supplies UI colours. See `DESIGN.md` (The Fixed Palette Rule, The Art Layer Rule).
 
+**Landing typography.** The landing page follows `landing-page-design` Part B in code: every text
+element uses a named style from `src/styles/theme.css` (`heading-1`…`caption-5`, with variants such
+as `md:heading-1`), never a loose `text-[Npx]` plus weight; spacing only from the B2 scale (no `*-5`,
+`*-7`, `*-2.5`…, sections at most `py-24`); Tailwind radii; reveals rise 32px over 700ms on
+`--e-base`. Brand fonts, palette and lucide still win over the skill's font and icon lists; buttons
+stay 44px tall for touch. The site nav and footer are outside this pass (client: unchanged).
+
 **Theme (semantic design tokens).** Use the semantic classes the theme defines (`text-ink`,
 `text-ink-soft`, `text-muted`, `bg-panel`, `bg-raised`, `bg-accent`, `border-line`, the hue tints
 and inks…). Forbidden in components: Tailwind palette colours (`text-gray-600`; Biome
@@ -283,6 +290,15 @@ tint (4.12:1) and pink ink on pink tint (3.71:1) — a design decision, recorded
 - **Colour scheme:** light only — no `dark:` classes in components; `theme.test.ts` checks `:root`.
 - **Reduced motion:** the global `prefers-reduced-motion` handling in `src/app/globals.css`; it wins
   over vendored advice → `motion`.
+- **Hero growth:** on first load the landing hero's grove grows from bare land (seedlings,
+  saplings, young trees, the grove closing overhead, blossom, fruit) and ends exactly on the hero
+  painting: a short film (`public/assets/brand/gouache/growth/`) played once over it by
+  `components/common/landing/heroGrow.ts`, then the painting takes over. The film is built from
+  painted growth stages (`scripts/art/gen.py`, `ART_STYLE=style-branch.txt`, `prompts-growth/`)
+  by `scripts/art/hero-growth-film.mjs`. **When the hero painting changes, regenerate the stages
+  and the film.** Reduced motion, data saver or no JavaScript shows the painting, still. The hero
+  painting is `grove-branch-style*.webp`, the immersive grove repainted in the hand of the orange
+  branches (`prompts-gouache/hero-branch-style-*`).
 - **Caching:** Cache Components **off** (kit default is on): every screen is a client component over
   `localStorage`, and turning it on would need new `<Suspense>` boundaries in the member layout.
   Revisit when the backend lands → `perf`.

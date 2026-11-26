@@ -10,20 +10,22 @@ import Image from "next/image";
 import type { TreeLevel } from "@/types/domain";
 
 export const TREE_SRC: Record<TreeLevel, string> = {
-  Seed: "/assets/brand/art/tree-seed.webp",
-  Bush: "/assets/brand/art/tree-bush.webp",
-  Tree: "/assets/brand/art/tree-tree.webp",
-  "Blossom Tree": "/assets/brand/art/tree-blossom.webp",
-  "Orange Tree": "/assets/brand/art/tree-orange.webp",
+  Seed: "/assets/brand/art/tree-seed-v2.webp",
+  Bush: "/assets/brand/art/tree-bush-v2.webp",
+  Tree: "/assets/brand/art/tree-tree-v2.webp",
+  "Blossom Tree": "/assets/brand/art/tree-blossom-v2.webp",
+  "Orange Tree": "/assets/brand/art/tree-orange-v2.webp",
 };
 
-/** The same five at one scale, standing on one ground line. */
+/** The five in the landing hero's hand (lime and teal leaves, glossy oranges;
+    scripts/art/stages-cut.mjs), at one scale on one ground line: the landing's
+    "How deep your roots go" row. */
 export const STAGE_SRC: Record<TreeLevel, string> = {
-  Seed: "/assets/brand/art/stage-seed.webp",
-  Bush: "/assets/brand/art/stage-bush.webp",
-  Tree: "/assets/brand/art/stage-tree.webp",
-  "Blossom Tree": "/assets/brand/art/stage-blossom.webp",
-  "Orange Tree": "/assets/brand/art/stage-orange.webp",
+  Seed: "/assets/brand/art/stage-seed-v2.webp",
+  Bush: "/assets/brand/art/stage-bush-v2.webp",
+  Tree: "/assets/brand/art/stage-tree-v2.webp",
+  "Blossom Tree": "/assets/brand/art/stage-blossom-v2.webp",
+  "Orange Tree": "/assets/brand/art/stage-orange-v2.webp",
 };
 
 export function TreeArt({

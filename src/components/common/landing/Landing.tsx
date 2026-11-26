@@ -8,6 +8,7 @@
    are flat tints with straight edges (sky, sage, blush) or the plain grey,
    and orange branches and blossom hang in at a few section edges. */
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import {
   AtSign,
   Download,
@@ -22,15 +23,19 @@ import {
 import Image, { getImageProps } from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { useForm } from "react-hook-form";
 import { Backdrop } from "@/components/art/Cozy";
 import { STAGE_SRC, TreeArt } from "@/components/art/Tree";
 import { Logo, LogoOrange } from "@/components/icons/Logo";
+import { FormField } from "@/components/shared";
+import { authService, joinWaitlistSchema } from "@/features/auth";
 import { GROUPS } from "@/features/groups";
 import { ARTICLES, articleCover } from "@/features/learn";
 import { hueInk } from "@/lib/hue";
 import { useStore } from "@/lib/mock-server";
-import { LEVELS } from "@/lib/rules/sunlight";
+import { canMentor, LEVELS } from "@/lib/rules/sunlight";
 import { GuideScene } from "./GuideScene";
+import { GROW_PLATES, useHeroGrow } from "./heroGrow";
 
 /* ------------------------------------------------------------- Motion */
 
@@ -63,33 +68,43 @@ function useReveal() {
 
 function OrangeDot() {
   return (
-    <span
-      aria-hidden
-      className="mt-[0.45em] inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-brand"
-    />
+    <span aria-hidden className="mt-2 inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-brand" />
   );
 }
 
-function PillButton({
-  href,
-  children,
-  tone = "dark",
-}: {
-  href: string;
-  children: React.ReactNode;
-  tone?: "dark" | "light";
-}) {
+/** The near-black pill: the page's one primary action. */
+const PILL =
+  "press button-md inline-flex h-11 min-w-[250px] items-center justify-center rounded-full bg-accent px-3 text-white transition-colors duration-300 ease-base hover:bg-black";
+
+/** The waitlist section's anchor; other pages link to `/#waitlist`. */
+const WAITLIST_ID = "waitlist";
+
+/** Glide to the waitlist section and put the cursor in its email field, so
+    the next thing a visitor does is type. Focus waits for no scroll: the
+    field is focused without jumping, and the glide carries on. */
+function goToWaitlist() {
+  goTo(WAITLIST_ID);
+  document
+    .querySelector<HTMLInputElement>(`#${WAITLIST_ID} input[type="email"]`)
+    ?.focus({ preventScroll: true });
+}
+
+/** "Join Waitlist": every call to action on the page, in place of
+    "Create account" and "Sign in". It scrolls to the waitlist form; without
+    script it is a plain in-page link. */
+function WaitlistButton({ className = "", onGo }: { className?: string; onGo?: () => void }) {
   return (
-    <Link
-      href={href}
-      className={`press inline-flex h-12 items-center justify-center rounded-full px-7 text-[16px] font-semibold ${
-        tone === "dark"
-          ? "bg-accent text-white hover:bg-black"
-          : "border border-line-strong bg-white text-ink hover:border-ink"
-      }`}
+    <a
+      href={`#${WAITLIST_ID}`}
+      onClick={(e) => {
+        e.preventDefault();
+        onGo?.();
+        goToWaitlist();
+      }}
+      className={`${PILL} ${className}`}
     >
-      {children}
-    </Link>
+      Join Waitlist
+    </a>
   );
 }
 
@@ -196,7 +211,7 @@ function SiteNav() {
         aria-label="Site"
         className={`site-nav sticky top-0 z-50 -mb-20 ${solid ? "bg-white/90 shadow-[0_1px_0_var(--line)] backdrop-blur-md" : "bg-transparent"}`}
       >
-        <div className="mx-auto flex h-20 max-w-[1440px] items-center gap-6 px-5 sm:px-8 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+        <div className="mx-auto flex h-20 max-w-[1440px] items-center gap-3 px-4 sm:gap-6 sm:px-8 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
           <Link
             href="/"
             aria-label="Fertility Grove home"
@@ -225,14 +240,6 @@ function SiteNav() {
             ))}
             <li>
               <Link
-                href="/community"
-                className="press inline-flex h-10 items-center rounded-full px-4 text-[15px] font-semibold text-ink-soft transition-colors duration-150 hover:text-ink"
-              >
-                Read posts
-              </Link>
-            </li>
-            <li>
-              <Link
                 href="/help"
                 className="press inline-flex h-10 items-center rounded-full px-4 text-[15px] font-semibold text-ink-soft transition-colors duration-150 hover:text-ink"
               >
@@ -241,29 +248,28 @@ function SiteNav() {
             </li>
           </ul>
           <div className="ml-auto flex items-center gap-2 lg:ml-0 lg:justify-self-end">
-            {signedIn ? (
+            {/* The public site is waitlist-first, so "Join Waitlist" is the bar's one
+                action for everyone. A signed-in member gets a quiet way back to their
+                grove beside it (in the menu on phones). */}
+            {signedIn && (
               <Link
                 href="/feed"
-                className="press inline-flex h-10 items-center rounded-full bg-accent px-5 text-[15px] font-semibold text-white hover:bg-black"
+                className="press hidden h-10 items-center rounded-full px-4 text-[15px] font-semibold text-ink hover:bg-ink/5 sm:inline-flex"
               >
                 Your grove
               </Link>
-            ) : (
-              <>
-                <Link
-                  href="/login"
-                  className="press inline-flex h-10 items-center rounded-full px-4 text-[15px] font-semibold text-ink hover:bg-ink/5"
-                >
-                  Sign in
-                </Link>
-                <Link
-                  href="/signup"
-                  className="press hidden h-10 items-center rounded-full bg-accent px-5 text-[15px] font-semibold text-white hover:bg-black sm:inline-flex"
-                >
-                  Create account
-                </Link>
-              </>
             )}
+            <a
+              href={`#${WAITLIST_ID}`}
+              onClick={(e) => {
+                e.preventDefault();
+                setOpen(false);
+                goToWaitlist();
+              }}
+              className="press inline-flex h-10 items-center rounded-full bg-accent px-4 text-[15px] font-semibold whitespace-nowrap text-white hover:bg-black min-[360px]:px-5"
+            >
+              Join Waitlist
+            </a>
             <button
               type="button"
               aria-label={open ? "Close menu" : "Open menu"}
@@ -279,7 +285,7 @@ function SiteNav() {
         {open && (
           <div
             id="site-menu"
-            className="rise border-t border-line bg-white px-5 pt-3 pb-6 sm:px-8 lg:hidden"
+            className="rise border-t border-line bg-white px-4 pt-3 pb-6 sm:px-8 lg:hidden"
           >
             <ul className="flex flex-col">
               {NAV.map((n) => (
@@ -299,29 +305,24 @@ function SiteNav() {
               ))}
               <li>
                 <Link
-                  href="/community"
-                  className="flex h-12 items-center text-[17px] font-semibold text-ink"
-                >
-                  Read posts
-                </Link>
-              </li>
-              <li>
-                <Link
                   href="/help"
                   className="flex h-12 items-center text-[17px] font-semibold text-ink"
                 >
                   Help
                 </Link>
               </li>
+              {signedIn && (
+                <li className="sm:hidden">
+                  <Link
+                    href="/feed"
+                    className="flex h-12 items-center text-[17px] font-semibold text-ink"
+                  >
+                    Your grove
+                  </Link>
+                </li>
+              )}
             </ul>
-            {!signedIn && (
-              <Link
-                href="/signup"
-                className="press mt-3 inline-flex h-12 w-full items-center justify-center rounded-full bg-accent text-[16px] font-semibold text-white"
-              >
-                Create account
-              </Link>
-            )}
+            <WaitlistButton className="mt-3 h-12 w-full" onGo={() => setOpen(false)} />
           </div>
         )}
       </nav>
@@ -339,6 +340,16 @@ function SiteNav() {
    painting of the same scene. `poster` is the earlier wide Riviera view
    (hero-poster-brand.txt), kept so it can come back by changing one word. */
 const HERO_ART = {
+  /* The immersive grove repainted in the hand of the brand's orange branches
+     (cozy/e-branch-side.webp): lime and teal leaves, glossy warm oranges.
+     Prompts: scripts/art/prompts-gouache/hero-branch-style-*.txt with
+     ART_STYLE=style-branch.txt. */
+  branchStyle: {
+    wide: { src: "/assets/brand/gouache/grove-branch-style.webp", width: 2752, height: 1536 },
+    tall: { src: "/assets/brand/gouache/grove-branch-style-tall.webp", width: 1536, height: 2752 },
+    position: { wide: "50% 40%", tall: "50% 65%" },
+    glow: true,
+  },
   immersive: {
     wide: { src: "/assets/brand/gouache/grove-immersive-v2.webp", width: 2752, height: 1536 },
     tall: { src: "/assets/brand/gouache/grove-immersive-tall-v2.webp", width: 1536, height: 2752 },
@@ -358,7 +369,7 @@ const HERO_ART = {
     glow: false,
   },
 } as const;
-const HERO = HERO_ART.immersive;
+const HERO = HERO_ART.branchStyle;
 
 /** The painting, art-directed by the screen's shape: the wide view on
     landscape screens, the portrait view on portrait ones (phones, tablets
@@ -375,17 +386,32 @@ function HeroPicture() {
     <picture>
       <source media="(min-aspect-ratio: 1/1)" srcSet={wide} />
       {/* biome-ignore lint/a11y/useAltText: alt="" comes from getImageProps; the painting is decorative */}
-      <img
-        {...img}
-        className="hero-art breathe absolute inset-0 h-full w-full object-cover"
-        style={
-          {
-            "--pos-wide": HERO.position.wide,
-            "--pos-tall": HERO.position.tall,
-          } as React.CSSProperties
-        }
-      />
+      <img {...img} className="hero-art absolute inset-0 h-full w-full object-cover" />
     </picture>
+  );
+}
+
+/** The painting's stage: it drifts (breathe) as one, carrying the bare-land
+    plate, the painting and, while the grove grows, the canvas that grows it
+    (heroGrow.ts). The framing variables are set here so all three crop alike. */
+function HeroStage() {
+  const stage = useRef<HTMLDivElement>(null);
+  useHeroGrow(stage);
+  return (
+    <div
+      ref={stage}
+      className="hero-stage breathe absolute inset-0"
+      style={
+        {
+          "--pos-wide": HERO.position.wide,
+          "--pos-tall": HERO.position.tall,
+          ...GROW_PLATES,
+        } as React.CSSProperties
+      }
+    >
+      <div className="hero-plate absolute inset-0" />
+      <HeroPicture />
+    </div>
   );
 }
 
@@ -407,14 +433,14 @@ function Hero() {
             as you scroll, so it never slides over the band below. */}
         <div aria-hidden className="absolute inset-0 overflow-hidden">
           <div ref={scene} className="absolute inset-0">
-            <HeroPicture />
+            <HeroStage />
           </div>
           {HERO.glow && <div className="hero-haze absolute inset-x-0 top-0 h-40" />}
         </div>
 
         <div
           ref={copy}
-          className={`absolute inset-x-0 z-10 flex items-center justify-center px-5 sm:px-8 ${HERO.glow ? "hero-copy" : "top-20 bottom-[46%]"}`}
+          className={`absolute inset-x-0 z-10 flex items-center justify-center px-4 sm:px-8 ${HERO.glow ? "hero-copy" : "top-20 bottom-[46%]"}`}
         >
           <div className="relative text-center">
             {/* The sunlit glow travels with the words, so they keep their light
@@ -425,32 +451,22 @@ function Hero() {
                 className="hero-glow pointer-events-none absolute top-[56%] left-1/2 -z-10 -translate-x-1/2 -translate-y-1/2"
               />
             )}
-            <p className="serif hero-kicker text-[30px] leading-none text-ink-soft italic sm:text-[36px]">
-              Welcome to the grove
-            </p>
-            <h1 className="serif hero-h1 mx-auto mt-3 max-w-[24ch] text-[36px] leading-[1.05] tracking-[-0.01em] text-balance text-ink sm:text-[48px] sm:leading-[1.04] lg:max-w-[28ch] xl:text-[60px] xl:leading-[1.02]">
-              The first purpose built platform for the fertility community.
+            {/* One line at every width: measured in Instrument Serif it runs
+                258px at 30px, 310px at 36px, 413px at 48px and 517px at 60px,
+                so each step fits the column it gets. */}
+            <h1 className="heading-4 mx-auto w-fit bg-linear-to-r from-ink to-muted bg-clip-text text-transparent min-[380px]:heading-3 sm:heading-2 md:heading-1">
+              Find the people who get it.
             </h1>
-            <p className="mx-auto mt-5 max-w-[46ch] text-[18px] md:portrait:max-w-[38ch] leading-relaxed text-pretty text-ink-soft sm:text-[20px]">
-              A private community for people going through infertility, and their partners.
+            <p className="body-7 mx-auto mt-6 max-w-[680px] text-ink-soft sm:body-8 md:portrait:max-w-[40ch]">
+              A private community for people going through infertility, and the partners going
+              through it with them. Ask the questions you can&apos;t ask anyone else, and meet
+              people a few steps ahead of you on the same road.
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-              <PillButton href="/signup">Create account</PillButton>
-              <PillButton href="/login" tone="light">
-                Sign in
-              </PillButton>
+              <WaitlistButton />
             </div>
-            <p className="mt-4 text-[14px] text-ink">
-              Invite-only during the beta.
-              <br />
-              Ask a member for their invite link, or{" "}
-              <Link
-                href="/community"
-                className="font-semibold text-ink underline underline-offset-2"
-              >
-                read posts members shared
-              </Link>
-              .
+            <p className="caption-2 mx-auto mt-4 max-w-[46ch] text-ink">
+              We&apos;re invite-only while we&apos;re in beta. Ask a member for a link.
             </p>
           </div>
         </div>
@@ -461,7 +477,7 @@ function Hero() {
 
 /* The privacy section: the promises in full, each a pill with a
    small outline icon, beside one round painting of a padlocked garden gate
-   (public/assets/brand/gouache/privacy-gate-round.webp, prompt in
+   (public/assets/brand/gouache/privacy-gate-round-v2.webp, prompt in
    scripts/art/prompts-gouache/privacy-lock-round-brand.txt). Every promise is
    one the product already makes (PRODUCT.md, the privacy page). */
 const PROMISES: { text: string; Icon: typeof Lock }[] = [
@@ -476,52 +492,43 @@ const PROMISES: { text: string; Icon: typeof Lock }[] = [
 function PrivacySection() {
   return (
     <section id="privacy" aria-labelledby="privacy-h" className="scroll-mt-20 bg-raised">
-      <div className="mx-auto grid max-w-[1440px] grid-cols-1 items-center gap-12 px-5 py-24 sm:px-8 lg:grid-cols-12 lg:gap-8 lg:py-32">
+      <div className="mx-auto grid max-w-[1440px] grid-cols-1 items-center gap-12 px-4 py-20 sm:px-8 lg:grid-cols-12 lg:gap-8 lg:py-24">
         <div className="lg:col-span-6">
-          <h2
-            id="privacy-h"
-            className="serif text-[44px] leading-[1] text-balance lg:text-[56px]"
-            data-reveal
-          >
+          <h2 id="privacy-h" className="heading-3 lg:heading-2" data-reveal>
             Your story stays yours
           </h2>
-          <p
-            className="mt-6 max-w-[54ch] text-[18px] leading-relaxed text-pretty text-ink-soft"
-            data-reveal
-          >
-            Fertility Grove is private by default, and you decide what anyone else sees. You post
-            under a handle unless you choose to show your first name and last initial, and your
-            health data is never sold.
+          <p className="body-7 mt-6 max-w-[54ch] text-ink-soft" data-reveal>
+            Fertility Grove is private by default. You post under a handle unless you choose to show
+            your first name and last initial, and your health data is never sold.
           </p>
-          <ul className="mt-8 flex flex-wrap gap-2.5" aria-label="Our privacy promises">
+          <ul className="mt-8 flex flex-wrap gap-2" aria-label="Our privacy promises">
             {PROMISES.map(({ text, Icon }, i) => (
               <li
                 key={text}
                 data-reveal
                 style={{ transitionDelay: `${i * 60}ms` }}
-                className="inline-flex h-10 items-center gap-2 rounded-full border border-line bg-white px-4 text-[14px] font-semibold text-ink"
+                className="body-4 inline-flex h-10 items-center gap-2 rounded-full border border-line bg-white px-4 text-ink"
               >
                 <Icon aria-hidden size={16} strokeWidth={1.75} className="shrink-0 text-ink-soft" />
                 {text}
               </li>
             ))}
           </ul>
-          <p
-            className="mt-8 max-w-[54ch] text-[16px] leading-relaxed text-pretty text-ink-soft"
-            data-reveal
-          >
-            Partners join with an account of their own, and nothing passes between you until you
-            share it. You can download or delete everything at any time.
+          <p className="body-3 mt-8 max-w-[54ch] text-ink-soft" data-reveal>
+            Partners have accounts of their own, and nothing passes between you until you share it.
+            Download or delete everything whenever you like.
           </p>
-          <p className="mt-6 text-[16px] text-ink-soft" data-reveal>
-            Questions about privacy? Read the{" "}
-            <Link href="/privacy" className="font-semibold text-ink underline underline-offset-2">
+          <p className="body-3 mt-6 text-ink-soft" data-reveal>
+            Questions about privacy?
+            <br />
+            Read our{" "}
+            <Link href="/privacy" className="body-1 text-ink underline underline-offset-2">
               Privacy Policy
             </Link>{" "}
-            and the{" "}
+            and{" "}
             <Link
               href="/privacy#health-data"
-              className="font-semibold text-ink underline underline-offset-2 sm:whitespace-nowrap"
+              className="body-1 text-ink underline underline-offset-2 sm:whitespace-nowrap"
             >
               Consumer Health Data Privacy Policy
             </Link>
@@ -536,7 +543,7 @@ function PrivacySection() {
           <div className="absolute inset-0 rounded-full bg-[var(--tint-yellow)]" />
           <div className="absolute inset-[9%] overflow-hidden rounded-full">
             <Image
-              src="/assets/brand/gouache/privacy-gate-round.webp"
+              src="/assets/brand/gouache/privacy-gate-round-v2.webp"
               alt="A brass padlock closed on a garden gate, under a branch of ripe oranges and blossom"
               fill
               sizes="(min-width: 1024px) 400px, 300px"
@@ -550,24 +557,64 @@ function PrivacySection() {
   );
 }
 
-/* The promise in three lines of type. From tablet up the type scales with
-   the window so each stays one line; on a phone each wraps. The lines rise in
-   turn, the gaps tightening a little so they read as one breath. */
-function Statement() {
-  const line = "block md:whitespace-nowrap";
+/* The intro line, directly under the hero, set large. Each word starts faint
+   and comes up to full ink as it crosses a line a little above the middle of
+   the screen, in reading order, so the sentence is read into being. One
+   observer for all the words; words that cross together step 45ms apart.
+   Without script, and under reduced motion, the words are simply there. */
+/* Three lines from tablet up, broken where the thought breaks. The longest
+   runs 646px at 36px, 861px at 48px and 1077px at 60px, so it steps up to
+   Heading 2 at 1024px and Heading 1 at 1280px and still holds three lines;
+   phones wrap it naturally. Set large on purpose: the client wants it as big as
+   the screen allows, so the 680px measure doesn't apply here. */
+const INTRO = [
+  "Tell us about your journey.",
+  "We'll point you to the groups, members and mentors",
+  "who are in the same place, or who just went through it.",
+];
+
+function IntroLine() {
+  const ref = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    const words = ref.current?.querySelectorAll<HTMLElement>("[data-word]");
+    if (!words?.length) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        let step = 0;
+        for (const e of entries) {
+          if (!e.isIntersecting) continue;
+          const el = e.target as HTMLElement;
+          el.style.transitionDelay = `${step++ * 45}ms`;
+          el.dataset.lit = "";
+          io.unobserve(el);
+        }
+      },
+      { rootMargin: "0px 0px -38% 0px" },
+    );
+    for (const w of words) io.observe(w);
+    return () => io.disconnect();
+  }, []);
   return (
-    <section aria-label="What you get" className="relative px-5 py-32 sm:px-8 lg:py-56">
+    <section
+      aria-label="Introduction"
+      className="relative flex min-h-[80svh] items-center justify-center px-4 py-24 sm:px-8"
+    >
       <Backdrop kind="statement" />
-      <p className="serif relative text-center text-[clamp(30px,8.4vw,44px)] leading-[1.15] text-balance text-ink md:text-[4vw] min-[100rem]:text-[60px]">
-        <span data-reveal className={line}>
-          Tell us where you are once.
-        </span>
-        <span data-reveal className={`${line} mt-4 lg:mt-7`} style={{ transitionDelay: "130ms" }}>
-          Meet people on your path, answers a clinician reviewed,
-        </span>
-        <span data-reveal className={`${line} mt-4 lg:mt-7`} style={{ transitionDelay: "230ms" }}>
-          and someone who&apos;s been there.
-        </span>
+      <p
+        ref={ref}
+        className="heading-3 intro-leading relative mx-auto text-center text-ink lg:heading-2 xl:heading-1"
+      >
+        {INTRO.map((line, l) => (
+          <span key={l} className="md:block md:whitespace-nowrap">
+            {line.split(" ").map((w, i) => (
+              <span key={i}>
+                <span data-word className="word-lit">
+                  {w}
+                </span>{" "}
+              </span>
+            ))}
+          </span>
+        ))}
       </p>
     </section>
   );
@@ -589,41 +636,41 @@ const SPECIMENS: {
   bleed?: boolean;
 }[] = [
   {
-    name: "Mentors who've been there",
-    fact: "Experienced members mentor for free. No application, just time in the grove.",
-    art: "/assets/brand/landing/way-mentors-bench.webp",
+    name: "Talk to someone a few steps ahead of you",
+    fact: "Experienced members mentor for free, with no application. Time in the grove is all it takes.",
+    art: "/assets/brand/landing/way-mentors-bench-v2.webp",
     bg: "var(--tint-purple)",
     wide: true,
     bleed: true,
   },
   {
-    name: "Matched groups",
-    fact: "Join up to five groups chosen for your diagnosis and stage, each with the reason why.",
-    art: "/assets/brand/landing/way-groups.webp",
+    name: "Groups that fit",
+    fact: "We match you with groups for your diagnosis and stage, and tell you why each one fits. You walk in and people already get it.",
+    art: "/assets/brand/landing/way-groups-v2.webp",
     bg: "var(--tint-pink)",
   },
   {
     name: "The Grove Guide",
-    fact: "Ask anything. It answers only from reviewed articles and shows its sources.",
+    fact: "Ask anything, any hour. The Guide answers from our clinician-reviewed library and shows you its sources.",
     art: "guide",
     bg: "var(--tint-blue)",
   },
   {
-    name: "Success stories, kept apart",
-    fact: "Hope when you want it. Pregnancy news stays in its own space.",
-    art: "/assets/brand/landing/way-stories.webp",
+    name: "Success stories, big and small",
+    fact: "A good result, a procedure that went well, a milestone you worked hard for, a pregnancy. These stories live in their own space, so you can go find encouragement when you want it.",
+    art: "/assets/brand/landing/way-stories-v2.webp",
     bg: "var(--tag-pink-bg)",
     wide: true,
   },
   {
-    name: "A family space",
-    fact: "Share a question list or a note with your partner, only when you choose.",
-    art: "/assets/brand/landing/way-family.webp",
+    name: "A space for the two of you",
+    fact: "Bring your partner in. Share a list of questions for your next appointment, a saved article or a note, whenever you're ready.",
+    art: "/assets/brand/landing/way-family-v2.webp",
     bg: "var(--tint-neutral)",
   },
   {
-    name: "Your tree",
-    fact: "Grow from Seed to Orange Tree each time someone finds you helpful.",
+    name: "A tree that grows as you give",
+    fact: "Share what you've learned and support other members, and your tree grows into a picture of how deep your roots run in the community.",
     art: "tree",
     bg: "var(--tint-green)",
   },
@@ -634,18 +681,18 @@ function Specimens() {
     <section
       id="groups"
       aria-labelledby="spec-h"
-      className="scroll-mt-24 mx-auto grid max-w-[1440px] grid-cols-1 gap-8 px-5 pb-24 sm:px-8 lg:grid-cols-12 lg:pb-36"
+      className="scroll-mt-24 mx-auto grid max-w-[1440px] grid-cols-1 gap-8 px-4 pb-20 sm:px-8 lg:grid-cols-12 lg:pb-24"
     >
       <div className="lg:col-span-3" data-reveal>
-        <h2 id="spec-h" className="serif text-[44px] leading-[1] lg:text-[56px]">
-          Six ways in
+        <h2 id="spec-h" className="heading-3 lg:heading-2">
+          Here&apos;s what&apos;s waiting for you
         </h2>
-        <p className="mt-4 max-w-[30ch] text-[16px] leading-relaxed text-ink-soft">
-          Groups, answers, mentors and your partner, so this isn&apos;t one more thing to juggle.
+        <p className="body-3 mt-4 max-w-[30ch] text-ink-soft">
+          Mentors, groups, answers and room for your partner, all shaped around your journey.
         </p>
       </div>
       {/* biome-ignore lint/a11y/noRedundantRoles: role="list" restores list semantics that Safari/VoiceOver drop under list-style: none; do not remove */}
-      <ul className="grid grid-cols-2 gap-2.5 lg:col-span-9 lg:grid-cols-4" role="list">
+      <ul className="grid grid-cols-2 gap-x-3 gap-y-8 lg:col-span-9 lg:grid-cols-4" role="list">
         {SPECIMENS.map((s, i) => (
           <li
             key={s.name}
@@ -654,7 +701,7 @@ function Specimens() {
             className={s.wide ? "col-span-2" : ""}
           >
             <div
-              className={`relative grid place-items-center overflow-hidden rounded-[20px] px-4 pt-6 ${s.wide ? "aspect-[8/5]" : "aspect-[4/5]"}`}
+              className={`relative grid place-items-center overflow-hidden rounded-3xl px-4 pt-6 ${s.wide ? "aspect-[8/5]" : "aspect-[4/5]"}`}
               style={{ background: s.bg }}
             >
               {s.art === "tree" ? (
@@ -690,8 +737,8 @@ function Specimens() {
                 </span>
               )}
             </div>
-            <h3 className="mt-3 text-[20px] font-semibold">{s.name}</h3>
-            <p className="mt-1 text-[16px] leading-relaxed text-ink-soft">{s.fact}</p>
+            <h3 className="title-2 mt-3 sm:title-1">{s.name}</h3>
+            <p className="body-6 mt-1 text-ink-soft sm:body-3">{s.fact}</p>
           </li>
         ))}
       </ul>
@@ -699,150 +746,200 @@ function Specimens() {
   );
 }
 
-/* The live thing: pick where you are, see where you'd land. */
+/* The personal part: tell us which part of your story you're in, and the
+   "Suggested for you" panel fills in for it. */
 type Stage = {
-  stage: string;
+  label: string;
+  description: string;
+  /** The line under the panel's subline, for this stage. */
   line: string;
   photo: string;
   alt: string;
   groups: string[];
+  mentor: { name: string; note: string };
   article: string;
+  question: string;
 };
 
+/* TODO(content): placeholder suggestions. The mapping from each stage to its
+   groups, mentor, first article and Guide question is still to come from the
+   client (Lauren); until then these come from the seed data. The labels,
+   descriptions and lines are final copy. */
 // A non-empty tuple, so STAGES[0] is always a Stage.
 const STAGES: [Stage, ...Stage[]] = [
   {
-    stage: "Trying to conceive",
-    line: "Months of trying, and wondering what's next.",
-    photo: "/assets/brand/landing/stage-trying.webp",
+    label: "I'm trying to conceive",
+    description: "Months in, and wondering what comes next.",
+    line: "Plenty of people are right where you are.",
+    photo: "/assets/brand/landing/stage-trying-v2.webp",
     alt: "A sunlit path winding up through an orange grove",
     groups: ["g-waiting", "g-unexplained", "g-work"],
+    mentor: { name: "Priya S.", note: "Letrozole cycles, IUI and asking for more tests" },
     article: "unexplained-infertility",
+    question: "What tests are usually done in a fertility workup?",
   },
   {
-    stage: "Waiting on tests",
-    line: "Appointments booked, answers not back yet.",
-    photo: "/assets/brand/landing/stage-waiting.webp",
+    label: "I'm waiting on results",
+    description: "Appointments booked, answers on the way.",
+    line: "The waiting room has company.",
+    photo: "/assets/brand/landing/stage-waiting-v2.webp",
     alt: "A garden bench under an orange tree, beside a path to a closed gate",
     groups: ["g-waiting", "g-pcos", "g-mf"],
+    mentor: { name: "@dana_two_lines", note: "Making sense of low AMH results" },
     article: "pcos",
+    question: "What does a low AMH result mean?",
   },
   {
-    stage: "In treatment",
-    line: "IUI, IVF or surgery, and everything in between.",
-    photo: "/assets/brand/landing/stage-treatment.webp",
+    label: "I'm in treatment",
+    description: "IUI, IVF, surgery and everything in between.",
+    line: "Cycle days go faster with people who know the drill.",
+    photo: "/assets/brand/landing/stage-treatment-v2.webp",
     alt: "An orange branch in white blossom, a small green fruit just forming",
     groups: ["g-ivf", "g-iui", "g-endo"],
+    mentor: { name: "Maya R.", note: "Endometriosis surgery and three IVF transfers" },
     article: "endometriosis",
+    question: "What's the difference between IUI and IVF?",
   },
   {
-    stage: "Taking a break",
-    line: "Stepping back for a while, without stepping away.",
-    photo: "/assets/brand/landing/stage-break.webp",
+    label: "I'm taking a break",
+    description: "Stepping back for a while, without stepping away.",
+    line: "Rest counts. Your spot in the grove will be here when you're ready.",
+    photo: "/assets/brand/landing/stage-break-v2.webp",
     alt: "A hammock in dappled shade at the edge of a still lake",
     groups: ["g-break", "g-rpl", "g-unexplained"],
+    mentor: { name: "@dana_two_lines", note: "Four retrievals, then a new path" },
     article: "recurrent-pregnancy-loss",
+    question: "What does it mean if no cause is found?",
   },
   {
-    stage: "I'm a partner",
-    line: "Supporting someone you love, and needing support too.",
-    photo: "/assets/brand/landing/stage-partner.webp",
+    label: "I'm a partner",
+    description: "Supporting someone I love, and needing support too.",
+    line: "You're part of this story too.",
+    photo: "/assets/brand/landing/stage-partner-v2.webp",
     alt: "Two chairs side by side facing a lake under an orange tree",
     groups: ["g-partners", "g-mf", "g-donor"],
+    mentor: { name: "Noah F.", note: "Five years as the partner who held the folder" },
     article: "male-factor",
+    question: "What does a semen analysis measure?",
   },
 ];
 
-/** On the flat sky band, each stage's painting sits on a white disc. */
-function WhereAreYou() {
+/** One row of the "Suggested for you" panel: a small label, then its content. */
+function SuggestRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="border-t border-line pt-4">
+      <dt className="caption-3 text-muted">{label}</dt>
+      <dd className="body-3 mt-1 text-ink">{children}</dd>
+    </div>
+  );
+}
+
+/** On the flat sky band: the stage picker on the left, the suggestions on
+    the right and, on wide screens, each stage's painting on a white disc
+    between them. Picking a stage changes the panel; hovering doesn't. */
+function Journey() {
   const [i, setI] = useState(0);
   const cur = STAGES[i] ?? STAGES[0];
-  const groups = cur.groups.map((id) => GROUPS.find((g) => g.id === id)!);
-  const article = ARTICLES.find((a) => a.slug === cur.article)!;
+  const groups = cur.groups.flatMap((id) => GROUPS.find((g) => g.id === id) ?? []);
+  const article = ARTICLES.find((a) => a.slug === cur.article);
   return (
-    <section aria-labelledby="where-h" className="bg-[var(--tint-blue)]">
-      <div className="mx-auto grid max-w-[1440px] grid-cols-1 items-center gap-10 px-5 py-20 sm:px-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,0.7fr)] lg:gap-14 lg:py-28">
-        <div className="order-2 lg:order-1">
-          <h2
-            id="where-h"
-            className="text-[28px] leading-[1.15] font-semibold text-ink lg:text-[36px]"
-          >
-            Where are you right now?
+    <section aria-labelledby="journey-h" className="bg-[var(--tint-blue)]">
+      <div className="mx-auto grid max-w-[1440px] grid-cols-1 items-center gap-10 px-4 py-20 sm:px-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.95fr)] lg:gap-12 lg:py-24">
+        <div>
+          <h2 id="journey-h" className="heading-3 text-ink lg:heading-2">
+            Tell us about your journey
           </h2>
-          <div
-            role="tablist"
-            aria-label="Journey stage"
-            aria-orientation="vertical"
-            className="mt-4 flex flex-wrap gap-2 lg:flex-col lg:flex-nowrap lg:gap-1"
-          >
-            {STAGES.map((s, k) => (
-              <button
-                key={s.stage}
-                type="button"
-                role="tab"
-                aria-selected={k === i}
-                onClick={() => setI(k)}
-                onMouseEnter={() => setI(k)}
-                onFocus={() => setI(k)}
-                className={`press flex shrink-0 flex-col items-start rounded-[18px] px-4 py-2.5 text-left lg:w-full transition-colors duration-200 ${
-                  k === i ? "bg-accent text-white" : "text-ink-soft hover:bg-white hover:text-ink"
-                }`}
-              >
-                <span className="text-[18px] font-semibold lg:text-[22px]">{s.stage}</span>
-                {/* Phones show the line only on the chosen stage, so the chips stay small. */}
-                <span
-                  className={`mt-0.5 text-[14px] leading-snug lg:text-[15px] ${k === i ? "text-white/80" : "hidden text-muted lg:block"}`}
+          <fieldset className="mt-3">
+            <legend className="body-7 text-ink-soft">
+              Which part of your story are you in right now?
+            </legend>
+            {/* One choice of five, so native radios: arrow keys move between
+                stages and each is announced "n of 5". The input is visually
+                hidden, so the focus ring goes on the row that wraps it. */}
+            <div className="mt-6 flex flex-col gap-2">
+              {STAGES.map((s, k) => (
+                <label
+                  key={s.label}
+                  className={`press flex w-full cursor-pointer flex-col items-start rounded-2xl px-4 py-3 text-left transition-colors duration-300 ease-base has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[var(--focus)] ${
+                    k === i ? "bg-accent text-white" : "text-ink hover:bg-white"
+                  }`}
                 >
-                  {s.line}
-                </span>
-              </button>
-            ))}
-          </div>
+                  <input
+                    type="radio"
+                    name="journey-stage"
+                    className="sr-only"
+                    checked={k === i}
+                    onChange={() => setI(k)}
+                  />
+                  <span className="title-2 lg:title-1">{s.label}</span>
+                  <span className={`caption-2 mt-0.5 ${k === i ? "text-white/80" : "text-muted"}`}>
+                    {s.description}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
         </div>
 
-        <div className="relative order-1 mx-auto aspect-square w-full max-w-[520px] lg:order-2">
-          <div
-            className="absolute inset-0 rounded-full transition-colors duration-300"
-            style={{ background: "var(--white)" }}
-          />
+        <div
+          aria-hidden
+          className="relative mx-auto hidden aspect-square w-full max-w-[460px] lg:block"
+        >
+          <div className="absolute inset-0 rounded-full bg-white" />
           {STAGES.map((s, k) => (
             <div
-              key={s.stage}
-              aria-hidden={k !== i}
-              className={`absolute inset-[9%] overflow-hidden rounded-full transition-[opacity,transform] duration-500 ease-[var(--e-out)] ${k === i ? "opacity-100" : "scale-[1.04] opacity-0"}`}
+              key={s.label}
+              className={`absolute inset-[9%] overflow-hidden rounded-full transition-[opacity,transform] duration-500 ease-base ${k === i ? "opacity-100" : "scale-[1.04] opacity-0"}`}
             >
               {/* The chosen painting settles in from a slight zoom while the last one fades; each drifts slowly, like a view through a window. */}
               <Image
                 src={s.photo}
                 alt={s.alt}
                 fill
-                sizes="(min-width: 1024px) 40vw, 90vw"
+                sizes="(min-width: 1024px) 34vw, 100vw"
                 quality={90}
                 className="drift object-cover"
-                priority={k === 0}
               />
             </div>
           ))}
           <span className="absolute right-[4%] bottom-[6%]">
-            <LogoOrange size={64} />
+            <LogoOrange size={60} />
           </span>
         </div>
 
-        <div
-          aria-live="polite"
-          className="order-3 rounded-[20px] bg-white p-6 text-[16px] leading-relaxed text-ink"
-        >
-          <p className="font-semibold">You&apos;d start in</p>
-          <ul className="mt-2 space-y-1.5">
-            {groups.map((g) => (
-              <li key={g.id} className="flex gap-2.5">
-                <OrangeDot />
-                {g.name}
-              </li>
-            ))}
-          </ul>
-          <p className="mt-5 font-semibold">First read</p>
-          <p className="text-ink-soft">{article.title}</p>
+        <div className="rounded-3xl bg-white p-6 sm:p-8">
+          <h3 className="heading-4 text-ink">Suggested for you</h3>
+          <p className="caption-2 mt-2 text-muted">
+            Based on what you just told us. Change it anytime.
+          </p>
+          <div aria-live="polite">
+            <p className="title-2 mt-4 mb-6 text-ink">{cur.line}</p>
+            <dl className="space-y-4">
+              <SuggestRow label="Groups for you">
+                <ul className="space-y-1">
+                  {groups.map((g) => (
+                    <li key={g.id} className="flex gap-2">
+                      <OrangeDot />
+                      {g.name}
+                    </li>
+                  ))}
+                </ul>
+              </SuggestRow>
+              <SuggestRow label="Meet a mentor">
+                <span className="body-1">{cur.mentor.name}</span>
+                <span className="body-6 block text-ink-soft">{cur.mentor.note}</span>
+              </SuggestRow>
+              {article && (
+                <SuggestRow label="Read this first">
+                  {article.title}
+                  <span className="body-6 block text-ink-soft">{article.readMinutes} min read</span>
+                </SuggestRow>
+              )}
+              <SuggestRow label="Ask the Guide">
+                <q className="text-ink-soft">{cur.question}</q>
+              </SuggestRow>
+            </dl>
+          </div>
         </div>
       </div>
     </section>
@@ -857,25 +954,22 @@ function LearnList() {
     <section
       id="learn"
       aria-labelledby="learn-h"
-      className="scroll-mt-20 mx-auto max-w-[1440px] px-5 py-24 sm:px-8 lg:py-36"
+      className="scroll-mt-20 mx-auto max-w-[1440px] px-4 py-20 sm:px-8 lg:py-24"
     >
       <div className="flex items-baseline justify-between gap-4" data-reveal>
-        <h2 id="learn-h" className="serif text-[44px] leading-[1] lg:text-[56px]">
+        <h2 id="learn-h" className="heading-3 lg:heading-2">
           Clinician-reviewed library
         </h2>
-        <span className="shrink-0 text-[16px] whitespace-nowrap text-muted">6 articles</span>
+        <span className="body-3 shrink-0 whitespace-nowrap text-muted">6 articles</span>
       </div>
-      <p className="mt-3 max-w-[60ch] text-[16px] leading-relaxed text-ink-soft" data-reveal>
+      <p className="body-3 mt-3 max-w-[60ch] text-ink-soft" data-reveal>
         One for each of six diagnoses, each reviewed by a clinician before it&apos;s published. Read
         the summaries now; the full articles open when you join.
       </p>
       <ul className="mt-12 grid grid-cols-1 gap-x-6 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
         {ARTICLES.map((a, i) => (
           <li key={a.slug} data-reveal style={{ transitionDelay: `${(i % 3) * 90}ms` }}>
-            <span
-              aria-hidden
-              className="relative block aspect-[16/9] overflow-hidden rounded-[20px]"
-            >
+            <span aria-hidden className="relative block aspect-[16/9] overflow-hidden rounded-3xl">
               <Image
                 src={articleCover(a.slug)}
                 alt=""
@@ -886,12 +980,12 @@ function LearnList() {
                 style={{ transitionDelay: `${(i % 3) * 90 + 120}ms` }}
               />
             </span>
-            <p className="mt-5 text-[14px] font-semibold" style={{ color: hueInk(a.hue) }}>
+            <p className="body-4 mt-6" style={{ color: hueInk(a.hue) }}>
               {a.diagnosis === "Unexplained" ? "Unexplained infertility" : a.diagnosis}
             </p>
-            <h3 className="mt-1 text-[20px] leading-snug font-semibold text-ink">{a.title}</h3>
-            <p className="mt-2 text-[16px] leading-relaxed text-ink-soft">{a.summary}</p>
-            <p className="tabular mt-3 text-[14px] text-muted">
+            <h3 className="title-1 mt-1 text-ink">{a.title}</h3>
+            <p className="body-3 mt-2 text-ink-soft">{a.summary}</p>
+            <p className="caption-2 tabular mt-3 text-muted">
               {a.readMinutes} min read · Reviewed {a.lastReviewed}
             </p>
           </li>
@@ -901,48 +995,143 @@ function LearnList() {
   );
 }
 
+/** The roots under one level's tree, drawn deeper and wider at each level so
+    "how deep your roots go" is literal: a taproot plus one more pair of side
+    roots per level. Drawn in a 100×96 box stretched to the column; strokes
+    keep their width. */
+function Roots({ level }: { level: number }) {
+  const d = 14 + level * 20; // taproot depth, 14 to 94
+  const paths = [`M50 0 C51 ${d * 0.35} 49 ${d * 0.7} 50 ${d}`];
+  for (let k = 1; k <= level; k++) {
+    const y0 = d * (0.12 + 0.2 * (k - 1));
+    const y1 = Math.min(94, y0 + d * 0.32);
+    const s = 8 + level * 6 - k * 3;
+    for (const dir of [-1, 1]) {
+      paths.push(`M50 ${y0} Q${50 + dir * s * 0.45} ${y0 + d * 0.06} ${50 + dir * s} ${y1}`);
+    }
+  }
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 100 96"
+      preserveAspectRatio="none"
+      className="block h-24 w-full text-bark"
+    >
+      {paths.map((p) => (
+        <path
+          key={p}
+          d={p}
+          fill="none"
+          stroke="currentColor"
+          strokeOpacity={0.55}
+          strokeWidth={1.5}
+          strokeLinecap="round"
+          vectorEffect="non-scaling-stroke"
+        />
+      ))}
+    </svg>
+  );
+}
+
+/* Your tree: the heading and its paragraph as one column, then the five levels
+   in one white panel. Each tree stands on a shared ground line with its roots
+   drawn beneath, deepening level by level, and the levels where mentoring is
+   open sit on a tinted zone marked "Mentoring opens here". Phones read the same
+   panel as a list, the zone behind its last rows. The closing line ends the
+   section, centred under the panel. */
 function Grow() {
+  const firstMentor = LEVELS.findIndex((l) => canMentor(l.level, false));
+  const zoneRows = LEVELS.length - firstMentor;
   return (
     <section id="grow" aria-labelledby="grow-h" className="scroll-mt-20 bg-[var(--tint-green)]">
-      <div className="mx-auto max-w-[1440px] px-5 py-24 sm:px-8 lg:py-32">
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12" data-reveal>
-          <h2 id="grow-h" className="serif text-[44px] leading-[1] lg:col-span-4 lg:text-[56px]">
-            Grow by helping
+      <div className="mx-auto max-w-[1440px] px-4 py-20 sm:px-8 lg:py-24">
+        <div className="max-w-[720px]" data-reveal>
+          <h2 id="grow-h" className="heading-3 lg:heading-2">
+            Your tree tells your story
           </h2>
-          <p className="max-w-[46ch] text-[16px] leading-relaxed text-ink-soft lg:col-span-5 lg:col-start-6">
-            The grove rewards being useful, not being loud. Each time someone finds your reply
-            helpful, your tree gets Sunlight. At Blossom Tree you can start mentoring others.
+          <p className="body-3 mt-6 text-ink-soft lg:body-7">
+            Your tree starts as a Seed and grows with every contribution you make. When you share a
+            resource, pass along something you&apos;ve learned, or encourage another member, and
+            they find it helpful, your tree earns Sunlight and your roots reach deeper into the
+            grove. Knowledge and community are powerful, and here you&apos;re recognized for
+            bringing both. At Blossom Tree, mentoring opens up, and you can guide someone who&apos;s
+            where you once were.
           </p>
         </div>
-        <ol
-          className="mt-12 grid grid-cols-5 items-start gap-2 sm:gap-6"
-          aria-label="The five tree levels"
+
+        <div className="mt-12 rounded-3xl bg-white p-4 md:mt-16 md:p-8 lg:p-12" data-reveal>
+          <h3 id="roots-label" className="title-1 px-2 text-ink md:px-0">
+            How deep your roots go
+          </h3>
+          <ol
+            aria-labelledby="roots-label"
+            className="relative mt-4 flex flex-col md:mt-8 md:grid md:grid-cols-5"
+            style={
+              {
+                "--zone-x": `${(firstMentor / LEVELS.length) * 100}%`,
+                "--zone-rows": zoneRows,
+              } as React.CSSProperties
+            }
+          >
+            {/* The mentoring zone: the last rows on a phone, the last columns from tablet up. */}
+            <span
+              aria-hidden
+              className="absolute inset-x-0 bottom-0 h-[calc(var(--zone-rows)*5rem)] rounded-lg bg-[var(--tint-green)] md:top-0 md:left-[var(--zone-x)] md:h-auto md:rounded-2xl"
+            />
+            {LEVELS.map((l, i) => {
+              const opens = i === firstMentor;
+              return (
+                <li
+                  key={l.level}
+                  data-reveal
+                  style={{ transitionDelay: `${i * 90}ms` }}
+                  className="relative flex h-20 items-center gap-4 px-2 md:h-auto md:flex-col md:items-stretch md:gap-0 md:px-0"
+                >
+                  {/* Tablet up: a slot above every tree, so the trees share one ground line. */}
+                  <span className="hidden h-12 items-start justify-start pt-3 pl-3 md:flex">
+                    {opens && (
+                      <span className="caption-3 whitespace-nowrap rounded-full bg-white px-3 py-1 text-ink">
+                        Mentoring opens here
+                      </span>
+                    )}
+                  </span>
+                  <span className="relative block h-16 w-16 shrink-0 md:h-40 md:w-full lg:h-52">
+                    <Image
+                      src={STAGE_SRC[l.level]}
+                      alt=""
+                      fill
+                      sizes="(min-width: 1024px) 240px, (min-width: 768px) 20vw, 64px"
+                      className="object-contain object-bottom"
+                    />
+                  </span>
+                  <span aria-hidden className="hidden h-0.5 bg-bark/30 md:block" />
+                  <span className="hidden md:block">
+                    <Roots level={i} />
+                  </span>
+                  <span className="flex flex-col md:items-center md:pt-2 md:pb-4">
+                    <span className="title-3 text-ink">{l.level}</span>
+                    <span className="caption-2 tabular text-muted">
+                      {l.at.toLocaleString()} Sunlight
+                    </span>
+                    {opens && (
+                      <span className="caption-3 mt-1 w-fit rounded-full bg-white px-2 py-0.5 text-ink md:hidden">
+                        Mentoring opens here
+                      </span>
+                    )}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+
+        <p
+          className="heading-5 mx-auto mt-16 max-w-[680px] text-center text-ink lg:mt-20 lg:heading-4"
+          data-reveal
         >
-          {LEVELS.map((l, i) => (
-            <li
-              key={l.level}
-              data-reveal
-              style={{ transitionDelay: `${i * 90}ms` }}
-              className="flex flex-col items-center text-center"
-            >
-              <span className="relative block aspect-square w-full">
-                <Image
-                  src={STAGE_SRC[l.level]}
-                  alt=""
-                  fill
-                  sizes="(min-width: 1024px) 260px, 20vw"
-                  className="object-contain object-bottom"
-                />
-              </span>
-              <span className="mt-2 text-[13px] font-semibold text-ink sm:text-[16px]">
-                {l.level}
-              </span>
-              <span className="tabular text-[13px] text-muted sm:text-[14px]">
-                {l.at.toLocaleString()} Sunlight
-              </span>
-            </li>
-          ))}
-        </ol>
+          Every member who shares a resource or a lesson helps the next person find their footing.
+          The more people join in, the more the grove flourishes.
+        </p>
       </div>
     </section>
   );
@@ -953,7 +1142,7 @@ function Partners() {
     <section
       id="partners"
       aria-labelledby="partners-h"
-      className="scroll-mt-20 relative px-5 py-24 sm:px-8 lg:py-36"
+      className="scroll-mt-20 relative px-4 py-20 sm:px-8 lg:py-24"
     >
       <Backdrop kind="partners" />
       <div className="relative mx-auto grid max-w-[1376px] grid-cols-1 items-center gap-10 lg:grid-cols-2 lg:gap-20">
@@ -962,7 +1151,7 @@ function Partners() {
           data-reveal
         >
           <Image
-            src="/assets/brand/landing/partners.webp"
+            src="/assets/brand/landing/partners-v2.webp"
             alt="Two young orange trees on a hill above a lake, their branches reaching toward each other"
             fill
             sizes="(min-width: 1024px) 40vw, 90vw"
@@ -971,27 +1160,27 @@ function Partners() {
           />
         </div>
         <div>
-          <h2 id="partners-h" className="serif text-[44px] leading-[1] lg:text-[56px]" data-reveal>
+          <h2 id="partners-h" className="heading-3 lg:heading-2" data-reveal>
             Room for partners too
           </h2>
           <div className="mt-8 grid grid-cols-1 gap-8 sm:grid-cols-2" data-reveal>
             <div>
-              <h3 className="text-[20px] font-semibold">Their own private account</h3>
-              <p className="mt-2 text-[16px] leading-relaxed text-ink-soft">
+              <h3 className="title-1">Their own private account</h3>
+              <p className="body-3 mt-2 text-ink-soft">
                 Partners join with your invite and get an account of their own, in a community where
                 somebody finally asks about them.
               </p>
             </div>
             <div>
-              <h3 className="text-[20px] font-semibold">A family space you both choose</h3>
-              <p className="mt-2 text-[16px] leading-relaxed text-ink-soft">
+              <h3 className="title-1">A family space you both choose</h3>
+              <p className="body-3 mt-2 text-ink-soft">
                 Share an appointment question list, a saved article or a family note. Nothing is
                 shared until you share it.
               </p>
             </div>
           </div>
-          <div className="mt-9" data-reveal>
-            <PillButton href="/signup">Create account</PillButton>
+          <div className="mt-8" data-reveal>
+            <WaitlistButton />
           </div>
         </div>
       </div>
@@ -999,46 +1188,95 @@ function Partners() {
   );
 }
 
-function Join() {
+/* The waitlist, closing the page on the blush band with the orange branch
+   hanging in from the top edge: the question, one line, then the email form
+   in a white card. Every "Join Waitlist" on the page scrolls here, and other
+   pages link to /#waitlist. People who already hold an invite link are told
+   to use it, under the card. */
+function Waitlist() {
+  // Checked on submit only; the message stays until the next submit, and focus stays put.
+  const form = useForm({
+    resolver: zodResolver(joinWaitlistSchema),
+    defaultValues: { email: "" },
+    reValidateMode: "onSubmit",
+    shouldFocusError: false,
+  });
+  const [joined, setJoined] = useState<string>();
+  // Arriving from another page's "Join Waitlist" (/#waitlist): the browser has
+  // scrolled here, so put the cursor in the field too.
+  useEffect(() => {
+    if (window.location.hash !== `#${WAITLIST_ID}`) return;
+    document
+      .querySelector<HTMLInputElement>(`#${WAITLIST_ID} input[type="email"]`)
+      ?.focus({ preventScroll: true });
+  }, []);
   return (
-    <Link
-      href="/signup"
-      className="group relative block overflow-hidden bg-[var(--tint-pink)] text-ink transition-colors duration-200 hover:bg-accent hover:text-white focus-visible:bg-accent focus-visible:text-white"
+    <section
+      id={WAITLIST_ID}
+      aria-labelledby="waitlist-h"
+      className="relative scroll-mt-20 overflow-hidden bg-[var(--tint-pink)] text-ink"
     >
       <Backdrop kind="join" />
-      <div className="relative mx-auto flex max-w-[1440px] flex-col justify-between gap-10 px-5 py-10 sm:px-8 lg:min-h-[52svh] lg:flex-row lg:items-end">
-        <p className="max-w-[28ch] text-[20px] leading-snug">
-          Invite-only during the beta. Bring the link a member sent you, and we&apos;ll take it from
-          there.
+      <div
+        className="relative mx-auto flex max-w-[1440px] flex-col items-center px-4 pt-24 pb-20 text-center sm:px-8 lg:min-h-[80svh] lg:justify-center lg:py-24"
+        data-reveal
+      >
+        <h2 id="waitlist-h" className="heading-3 max-w-[680px] sm:heading-2 lg:heading-1">
+          Ready to find your people?
+        </h2>
+        <p className="body-7 mt-6 max-w-[40ch] text-ink-soft sm:body-8">
+          We&apos;re invite-only during the beta. Leave your email and we&apos;ll let you know as
+          soon as sign-up opens.
         </p>
-        <span className="flex items-end gap-[3vw]">
-          <span className="serif text-[30vw] leading-[0.72] tracking-[-0.03em] lg:text-[20vw]">
-            Join
-          </span>
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 48 48"
-            className="mb-[2vw] h-[9vw] w-[9vw] transition-transform duration-200 ease-[var(--e-out)] group-hover:translate-x-2 group-hover:-translate-y-2 lg:h-[6vw] lg:w-[6vw]"
-          >
-            <path
-              d="M12 36 L36 12 M16 12 H36 V32"
-              stroke="currentColor"
-              strokeWidth="3.5"
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </span>
+
+        <div className="mt-10 w-full max-w-[480px] rounded-3xl bg-white p-4 text-left min-[360px]:p-6 sm:p-8">
+          {joined ? (
+            <div role="status">
+              <p className="title-1 text-ink">You&apos;re on the waitlist</p>
+              <p className="body-3 mt-2 text-ink-soft">
+                Thank you. We&apos;ll email {joined} as soon as sign-up opens.
+              </p>
+            </div>
+          ) : (
+            <form
+              noValidate
+              aria-label="Join the waitlist"
+              className="flex flex-col gap-4"
+              onSubmit={form.handleSubmit(({ email }) => {
+                // TODO(api): POST /api/v1/auth/sign-up-waitlist.
+                const r = authService.joinWaitlist(email);
+                if (r.ok) setJoined(email.trim());
+                else form.setError("email", { message: r.error });
+              })}
+            >
+              <FormField
+                form={form}
+                name="email"
+                label="Your email"
+                kind="email"
+                inputMode="email"
+                autoComplete="email"
+                autoCapitalize="none"
+              />
+              <button type="submit" className={`${PILL} w-full`}>
+                Join Waitlist
+              </button>
+            </form>
+          )}
+        </div>
+
+        <p className="caption-2 mt-6 max-w-[46ch] text-ink-soft">
+          Have an invite? Bring the link a member sent you and come on in.
+        </p>
       </div>
-    </Link>
+    </section>
   );
 }
 
 function Footer() {
   return (
     <footer className="bg-raised text-ink">
-      <div className="mx-auto max-w-[1440px] px-5 pt-14 sm:px-8">
+      <div className="mx-auto max-w-[1440px] px-4 pt-16 sm:px-8">
         <div className="grid grid-cols-1 gap-10 pb-10 sm:grid-cols-2 lg:grid-cols-12">
           <div className="lg:col-span-3">
             <Logo height={44} />
@@ -1115,14 +1353,14 @@ export function Landing() {
       <SiteNav />
       <Hero />
       <main className="bg-white">
-        <Statement />
+        <IntroLine />
         <Specimens />
-        <WhereAreYou />
+        <Journey />
         <LearnList />
         <Grow />
         <Partners />
         <PrivacySection />
-        <Join />
+        <Waitlist />
       </main>
       <Footer />
     </>

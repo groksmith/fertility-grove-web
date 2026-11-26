@@ -255,7 +255,7 @@ function Drift({
           >
             {p.kind ? (
               <Image
-                src={`${DIR}/leaf-${p.kind}.webp`}
+                src={`${DIR}/leaf-${p.kind}-v2.webp`}
                 alt=""
                 width={p.s}
                 height={p.s}

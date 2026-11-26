@@ -17,7 +17,7 @@ import { Avatar, FormField, SourceLabel, TypeChip, VoteControl } from "@/compone
 import { Button, LinkButton } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Panel } from "@/components/ui/panel";
-import { authService, joinWaitlistSchema, signUpStatus } from "@/features/auth";
+import { authService, joinWaitlistSchema } from "@/features/auth";
 import { allowsDownvote, type PublicPost } from "@/features/posts";
 import { plural, timeAgo } from "@/lib/format";
 import { useStore } from "@/lib/mock-server";
@@ -27,10 +27,9 @@ export function useGuestAction() {
   const router = useRouter();
   const s = useStore();
   const [open, setOpen] = useState(false);
+  // Guests always get the waitlist: sign-up isn't offered on public pages.
   const ask = (memberHref: string) => {
     if (s.signedIn && s.step >= 9) return router.push(memberHref);
-    // TODO(api): GET /api/v1/auth/sign-up-status.
-    if (!signUpStatus(s).isInviteOnly) return router.push("/signup");
     setOpen(true);
   };
   return { ask, ui: <SignUpPrompt open={open} onClose={() => setOpen(false)} /> };
@@ -79,15 +78,11 @@ function SignUpPrompt({ open, onClose }: { open: boolean; onClose: () => void })
             autoComplete="email"
             autoCapitalize="none"
           />
-          <Button type="submit">Let me know</Button>
+          <Button type="submit" className="min-w-[250px]">
+            Join Waitlist
+          </Button>
         </form>
       )}
-      <p className="mt-5 text-[14px] text-muted">
-        Already a member?{" "}
-        <Link href="/login" className="font-semibold text-accent underline">
-          Sign in
-        </Link>
-      </p>
     </Dialog>
   );
 }
@@ -195,15 +190,9 @@ export function JoinBlock({ title, children }: { title: string; children?: React
         partners. Replies stay inside.
       </p>
       <div className="mt-5 flex flex-wrap gap-2">
-        <LinkButton href="/signup" variant="light">
-          Create account
+        <LinkButton href="/#waitlist" variant="light" className="min-w-[250px]">
+          Join Waitlist
         </LinkButton>
-        <Link
-          href="/login"
-          className="press inline-flex h-11 items-center rounded-full px-5 text-[15px] font-semibold text-white hover:bg-white/10"
-        >
-          Sign in
-        </Link>
       </div>
     </div>
   );

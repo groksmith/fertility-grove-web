@@ -108,8 +108,8 @@ export function ReadingFrame({
             <CircleHelp size={16} aria-hidden />
             Help
           </Link>
-          <Link href="/login" className="hover:text-ink">
-            Sign in
+          <Link href="/#waitlist" className="hover:text-ink">
+            Join Waitlist
           </Link>
         </nav>
       </header>

@@ -44,9 +44,9 @@ colors:
 typography:
   display:
     fontFamily: "Instrument Serif, Georgia, serif"
-    fontSize: "68px"
+    fontSize: "60px"
     fontWeight: 400
-    lineHeight: 1.04
+    lineHeight: 1
   headline:
     fontFamily: "Instrument Serif, Georgia, serif"
     fontSize: "32px"
@@ -54,7 +54,7 @@ typography:
     lineHeight: 1.1
   section:
     fontFamily: "Instrument Serif, Georgia, serif"
-    fontSize: "56px"
+    fontSize: "48px"
     fontWeight: 400
     lineHeight: 1
   title:
@@ -206,8 +206,15 @@ The palette is fixed: the live site's colours plus the approved v1 palette. Neve
 **Character:** The live site's pairing. A condensed editorial serif gives titles a human voice; a clear grotesque keeps every control legible on a phone at night.
 
 ### Hierarchy
-- **Display** (400 serif, 68px desktop / 44px tablet / 28px phone, 1.04): the landing headline only.
-- **Section** (400 serif, 56px desktop / 44px phone, 1.0): landing section titles.
+**The landing page** uses the named text styles of the `landing-page-design` skill (Part B1), defined
+once in `src/styles/theme.css` as `@utility` classes: `heading-1`…`heading-6` (Instrument Serif at 400,
+the face's only weight), `title-1`…`title-5` (sans 500), `body-1`…`body-8`, `button-*` and
+`caption-*`, each on a Tailwind type-scale step with that step's line height. The hero headline is
+Heading 1 (60px, one line, ink to muted on the text), section titles Heading 2 (48px) and Heading 3
+(36px) on phones; spacing comes from the skill's B2 scale and radii from Tailwind's. No `text-[Npx]`
+on the landing page.
+
+The member app keeps the hierarchy below:
 - **Headline** (400 serif, 32px desktop / 28px phone, 1.1): app page titles (h1).
 - **Title** (600 sans, 18–20px, 1.35): post, card and panel titles.
 - **Body** (400 sans, 15–16px, 1.6): posts, articles (about 65ch), descriptions.
@@ -245,7 +252,7 @@ Cards 20px, controls 10px, inner items 8px, chips 5px. Buttons, chips, badges an
 - Sidebar rows are 14px with a 17px outline icon; the active row is a white tab with a hairline ring and semibold ink. Count badges are Brand Orange with ink text, and only appear on queues that need action.
 
 ### The Tree (signature)
-`TreeArt` shows the brand's watercolour tree at each level, all drawn from the final painting of the growth film so the set is one hand: Seed (a painted citrus pip half sunk in soil, its first shoot breaking the tip), Bush (the green canopy low on a short trunk), Tree (the full canopy before fruit), Blossom Tree (the same canopy in white orange blossom) and Orange Tree (in fruit). `STAGE_SRC` holds the same five at one shared scale on one ground line, for the growth plate on the landing page. The hero film (`tree-grow.webm` / `.mp4`, 1024×1024 square pixels, about 0.6 MB / 1 MB) is cut straight from the site's original (`trees.mp4`, 1440×1080 stored, anamorphic 4:3, so 1920×1080 displayed), cropped round the tree at full resolution; always cut art from that original at its displayed width, never from an earlier cut. `TreeGlyph` is the 16px mark beside every name, coloured from that art; it stays attached to the name and the name truncates first. The landing hero is a still painting that breathes: a 40 second drift between 1.02 and 1.07 scale (`.breathe`) you only notice if you wait. It is art-directed by the screen's shape (`<picture>` with `getImageProps`): the wide painting on landscape screens, the portrait one on portrait screens, each with its own crop (`.hero-art`). Two layers of brand white keep the words readable, both part of the painting rather than the UI: a soft haze along the top edge under the site bar and logo (`.hero-haze`), and a sunlit glow behind the words that travels with them as they scroll (`.hero-glow`); both are lighter on portrait screens, where the painting brings its own light, and the glow is smaller on short laptop screens. The words sit low in that light (`.hero-copy`). Every hero line is measured at 4.5:1 or better (3:1 for the headline) at 1440, 1280×720, 1920, 768×1024 and 390. Leaving the hero is walking down the path: as you scroll, the painting moves at about a third of the page's speed and eases another 7% forward inside a fixed clipping frame, while the words rise 90px and fade a little faster so the text clears first (`useLeaveHero`, one rAF-throttled scroll listener, transform and opacity only, off under reduced motion). At rest the field fills the whole screen (`max(700px, 100svh)`). On short laptop screens the italic welcome drops to 30px and the headline to 48px (`.hero-kicker`, `.hero-h1`). `HERO_ART` in Landing.tsx keeps the earlier wide Riviera poster (`grove-poster.webp`) and a denser alternative one word away.
+`TreeArt` shows the brand's watercolour tree at each level, all drawn from the final painting of the growth film so the set is one hand: Seed (a painted citrus pip half sunk in soil, its first shoot breaking the tip), Bush (the green canopy low on a short trunk), Tree (the full canopy before fruit), Blossom Tree (the same canopy in white orange blossom) and Orange Tree (in fruit). `STAGE_SRC` holds the five repainted in the landing hero's hand (lime and teal leaves, glossy warm oranges; painted in one row by `scripts/art/gen.py` with `prompts-stages/stages-row.txt`, cut by `scripts/art/stages-cut.mjs`) at one shared scale on one ground line, for the growth row on the landing page. The rest of the landing's art, the Learn covers, the app's five trees (`TREE_SRC`) and the cosy leaves are repainted in the same hand as the hero, the hand of the orange branches (`scripts/art/style-branch.txt`): each from its old picture as the master (`scripts/art/prompts-restyle/`), finished by `scripts/art/restyle-finish.mjs` as `<name>-v2.webp` beside the old file. Paint new art in this hand. The hero film (`tree-grow.webm` / `.mp4`, 1024×1024 square pixels, about 0.6 MB / 1 MB) is cut straight from the site's original (`trees.mp4`, 1440×1080 stored, anamorphic 4:3, so 1920×1080 displayed), cropped round the tree at full resolution; always cut art from that original at its displayed width, never from an earlier cut. `TreeGlyph` is the 16px mark beside every name, coloured from that art; it stays attached to the name and the name truncates first. The landing hero is a still painting that breathes: a 40 second drift between 1.02 and 1.07 scale (`.breathe`) you only notice if you wait. It is art-directed by the screen's shape (`<picture>` with `getImageProps`): the wide painting on landscape screens, the portrait one on portrait screens, each with its own crop (`.hero-art`). Two layers of brand white keep the words readable, both part of the painting rather than the UI: a soft haze along the top edge under the site bar and logo (`.hero-haze`), and a sunlit glow behind the words that travels with them as they scroll (`.hero-glow`); both are lighter on portrait screens, where the painting brings its own light, and the glow is smaller on short laptop screens. The words sit low in that light (`.hero-copy`). Every hero line is measured at 4.5:1 or better (3:1 for the headline) at 1440, 1280×720, 1920, 768×1024 and 390. Leaving the hero is walking down the path: as you scroll, the painting moves at about a third of the page's speed and eases another 7% forward inside a fixed clipping frame, while the words rise 90px and fade a little faster so the text clears first (`useLeaveHero`, one rAF-throttled scroll listener, transform and opacity only, off under reduced motion). At rest the field fills the whole screen (`max(700px, 100svh)`). On short laptop screens the italic welcome drops to 30px and the headline to 48px (`.hero-kicker`, `.hero-h1`). `HERO_ART` in Landing.tsx keeps the earlier wide Riviera poster (`grove-poster.webp`) and a denser alternative one word away.
 
 ### The Cosy Layer (background atmosphere)
 `components/art/Cozy.tsx` paints a background behind the brand's pictures, never instead of them. Every foreground image (the watercolour trees, spot art, the growth film, photos) stays as it was. Art is original gouache made for Fertility Grove with Nano Banana Pro; files live in `public/assets/brand/cozy/`.

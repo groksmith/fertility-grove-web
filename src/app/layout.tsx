@@ -13,7 +13,6 @@ const instrument = Instrument_Serif({
   variable: "--font-instrument",
   subsets: ["latin"],
   weight: "400",
-  style: ["normal", "italic"], // italic for the landing hero's "Welcome to the grove"
   display: "swap",
 });
 

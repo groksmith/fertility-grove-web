@@ -319,6 +319,12 @@
       const path = imgPath(new URL(bgUrl[1], location.href).href);
       if (path) list.push({ type: "rect", image: path, width: Math.round(r.width), height: Math.round(r.height), x: Math.round(r.left - origin.x), y: Math.round(r.top - origin.y), scaleMode: cs.backgroundSize === "contain" ? "FIT" : "FILL", name: path.split("/").pop() });
     }
+    // A CSS gradient (a wash behind the hero text): dom-to-figma renders it to a
+    // transparent PNG and places it as an image layer. Gradient text is skipped.
+    if (!bgUrl && /gradient\(/.test(cs.backgroundImage || "") && cs.backgroundClip !== "text" && r.width >= 1 && r.height >= 1) {
+      const op = Number(cs.opacity);
+      list.push({ type: "rect", gradient: cs.backgroundImage, width: Math.round(r.width), height: Math.round(r.height), x: Math.round(r.left - origin.x), y: Math.round(r.top - origin.y), radius: px(cs.borderTopLeftRadius) || undefined, opacity: op < 1 ? op : undefined, name: "gradient" });
+    }
 
     const s = boxStyle(el, cs);
     const isField = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
@@ -330,6 +336,8 @@
       const f = { type: "frame", name: nameOf(el), x: Math.round((r.left - origin.x) * 10) / 10, y: Math.round((r.top - origin.y) * 10) / 10, width: Math.max(1, Math.round(r.width * 10) / 10), height: Math.max(1, Math.round(r.height * 10) / 10), children: [] };
       for (const k of ["fill", "stroke", "strokeWeight", "strokeAlign", "radius", "shadow", "opacity"]) if (s[k] !== undefined) f[k] = s[k];
       if (s.clip) f.clip = true;
+      // Fixed and sticky bars draw above the page; dom-to-figma moves them last.
+      if (cs.position === "fixed" || cs.position === "sticky") f.onTop = true;
       for (const b of s.lines || []) {
         const line = { type: "rect", name: `border ${b.k.toLowerCase()}`, fill: b.c };
         if (b.k === "Top") Object.assign(line, { x: 0, y: 0, width: f.width, height: b.w });
@@ -383,6 +391,23 @@
         } else walk(n, kids, o, depth + 1);
       }
     }
+  }
+
+  // A word-by-word reveal wraps every word in its own span (and, on wide screens,
+  // every line in a block). Rewrite such a paragraph as the lines it rendered,
+  // joined by <br>, so it comes out as one text layer breaking where the page
+  // does. It then spans its container: Figma's metrics run slightly wider, and a
+  // box sized to the longest line would wrap its last word.
+  for (const p of document.querySelectorAll("p:has([data-word])")) {
+    const lines = [];
+    for (const w of p.querySelectorAll("[data-word]")) {
+      const top = w.getBoundingClientRect().top;
+      const last = lines.at(-1);
+      if (last && Math.abs(last.top - top) < 2) last.words.push(w.textContent.trim());
+      else lines.push({ top, words: [w.textContent.trim()] });
+    }
+    p.replaceChildren(...lines.flatMap((l, i) => [...(i ? [document.createElement("br")] : []), document.createTextNode(l.words.join(" "))]));
+    p.style.width = "100%";
   }
 
   const root = [];

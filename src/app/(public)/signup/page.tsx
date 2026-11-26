@@ -151,7 +151,9 @@ export default function SignupPage() {
               kind="email"
               autoComplete="email"
             />
-            <Button type="submit">Let me know</Button>
+            <Button type="submit" className="min-w-[250px]">
+              Join Waitlist
+            </Button>
           </form>
         )}
       </AuthFrame>
