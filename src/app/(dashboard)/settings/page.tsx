@@ -17,12 +17,15 @@ import {
   Compass,
   Download,
   FlaskConical,
+  HeartHandshake,
+  IdCard,
   Lock,
   type LucideIcon,
   ShieldCheck,
   Sparkles,
   Sprout,
   Trash2,
+  Trees,
   UserRound,
   UsersRound,
 } from "lucide-react";
@@ -37,11 +40,22 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Choices } from "@/components/ui/choices";
 import { Dialog } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
-import { PasswordInput } from "@/components/ui/input";
+import { Input, PasswordInput } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Toggle } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
-import { CREDITS, DIAGNOSES, JOURNEY_STAGES, PATHS, TREATMENTS } from "@/config/options";
+import {
+  AGE_RANGES,
+  COMMUNITIES,
+  CONNECT_STYLES,
+  CREDITS,
+  DIAGNOSES,
+  GENDERS,
+  JOURNEY_STAGES,
+  LOOKING_FOR,
+  PATHS,
+  TREATMENTS,
+} from "@/config/options";
 import { authService, person } from "@/features/auth";
 import { creditTotal } from "@/features/credits";
 import { demoService } from "@/features/demo";
@@ -59,7 +73,7 @@ import { plural } from "@/lib/format";
 import { type State, useStore } from "@/lib/mock-server";
 import { requestLeave } from "@/lib/navigation-guard";
 import { formatDate, nextRefill } from "@/lib/rules/credits";
-import { MSG } from "@/lib/rules/validation";
+import { checks, MSG } from "@/lib/rules/validation";
 import type { MessagePolicy } from "@/types/domain";
 
 /** One settings page: its title and what it's for, then its controls. */
@@ -326,22 +340,35 @@ function Journey({ s }: { s: State }) {
   const [treat, setTreat] = useState<string[]>(me.treatments);
   const [dx, setDx] = useState<string[]>(me.diagnoses);
   const [paths, setPaths] = useState<string[]>(me.paths);
+  const [nextDate, setNextDate] = useState(me.nextDate);
+  const [other, setOther] = useState(me.otherDiagnosis);
+  const [otherError, setOtherError] = useState<string>();
+  const treating = stages.includes("Pursuing treatment");
   const same = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
   const dirty =
     me.healthConsent &&
     (!same(stages, me.stages) ||
       !same(treat, me.treatments) ||
       !same(dx, me.diagnoses) ||
-      !same(paths, me.paths));
+      !same(paths, me.paths) ||
+      (treating && nextDate !== me.nextDate) ||
+      (dx.includes("Other") && other !== me.otherDiagnosis));
   const save = () => {
     if (!stages.length) {
       toast(MSG.selectOne);
       return false;
     }
-    settingsService.update({
+    if (dx.includes("Other") && !other.trim()) {
+      setOtherError(MSG.otherDiagnosis);
+      return false;
+    }
+    setOtherError(undefined);
+    void settingsService.update({
       stages,
-      treatments: stages.includes("Pursuing treatment") ? treat : [],
+      treatments: treating ? treat : [],
+      nextDate: treating ? nextDate : "",
       diagnoses: dx,
+      otherDiagnosis: dx.includes("Other") ? other.trim() : "",
       paths,
     });
     toast("Saved. Your matches will refresh.");
@@ -387,15 +414,25 @@ function Journey({ s }: { s: State }) {
         multi
         columns={2}
       />
-      {stages.includes("Pursuing treatment") && (
-        <Choices
-          legend="Which treatment"
-          options={TREATMENTS}
-          value={treat}
-          onChange={setTreat}
-          multi
-          columns={3}
-        />
+      {treating && (
+        <>
+          <Choices
+            legend="Which treatment"
+            options={TREATMENTS}
+            value={treat}
+            onChange={setTreat}
+            multi
+            columns={3}
+          />
+          <Field
+            label="Next treatment or cycle date"
+            optional
+            hint="Only you see this. It helps match people at the same point."
+            className="max-w-xs"
+          >
+            <Input type="date" value={nextDate} onChange={(e) => setNextDate(e.target.value)} />
+          </Field>
+        </>
       )}
       <Choices
         legend="Diagnosis"
@@ -405,6 +442,11 @@ function Journey({ s }: { s: State }) {
         multi
         columns={2}
       />
+      {dx.includes("Other") && (
+        <Field label="Other diagnosis" error={otherError} className="max-w-md">
+          <Input value={other} maxLength={100} onChange={(e) => setOther(e.target.value)} />
+        </Field>
+      )}
       <Choices
         legend="Path to parenthood"
         options={PATHS}
@@ -414,6 +456,182 @@ function Journey({ s }: { s: State }) {
         columns={2}
       />
       <Button onClick={save}>Save journey</Button>
+      {guard.ui}
+    </Section>
+  );
+}
+
+/* About you (PRD §6): gender identity, age range and ZIP code. Gender and ZIP are required; none
+   of the three is ever shown on the profile. Pronouns are edited with the profile. */
+function AboutYou({ s }: { s: State }) {
+  const me = s.me;
+  const [gender, setGender] = useState(me.gender);
+  const [genderSelf, setGenderSelf] = useState(me.genderSelf);
+  const [ageRange, setAgeRange] = useState(me.ageRange);
+  const [zip, setZip] = useState(me.zip);
+  const [errs, setErrs] = useState<{ gender?: string; genderSelf?: string; zip?: string }>({});
+  const self = gender === "Prefer to self-describe";
+  const dirty =
+    gender !== me.gender ||
+    (self && genderSelf !== me.genderSelf) ||
+    ageRange !== me.ageRange ||
+    zip !== me.zip;
+  const save = () => {
+    const next = {
+      gender: gender ? undefined : MSG.gender,
+      genderSelf: self && !genderSelf.trim() ? MSG.genderSelf : undefined,
+      zip: checks.zip(zip),
+    };
+    setErrs(next);
+    if (next.gender || next.genderSelf || next.zip) return false;
+    void settingsService.update({
+      gender,
+      genderSelf: self ? genderSelf.trim() : "",
+      ageRange,
+      zip: zip.trim(),
+    });
+    toast("Saved. Your matches will refresh.");
+    return true;
+  };
+  const guard = useUnsavedGuard({ dirty, onSave: save });
+  return (
+    <Section
+      id="about"
+      title="About you"
+      description="Used only to suggest your community and people near your stage of life. Never shown on your profile."
+    >
+      <Choices
+        legend="Gender identity"
+        options={GENDERS}
+        value={gender ? [gender] : []}
+        onChange={([g]) => setGender(g ?? "")}
+        error={errs.gender}
+        hint="Private. Never shown on your profile."
+      />
+      {self && (
+        <Field label="How you describe your gender identity" error={errs.genderSelf}>
+          <Input
+            value={genderSelf}
+            maxLength={50}
+            onChange={(e) => setGenderSelf(e.target.value)}
+          />
+        </Field>
+      )}
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+        <Field label="Age range" optional hint="Never shown.">
+          <Select value={ageRange} onChange={(e) => setAgeRange(e.target.value)}>
+            <option value="">Choose</option>
+            {AGE_RANGES.map((a) => (
+              <option key={a}>{a}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field
+          label="ZIP code"
+          hint="Never shown. Helps us match you with people in your region."
+          error={errs.zip}
+        >
+          <Input
+            value={zip}
+            inputMode="numeric"
+            autoComplete="postal-code"
+            maxLength={10}
+            onChange={(e) => setZip(e.target.value)}
+          />
+        </Field>
+      </div>
+      <Button onClick={save}>Save</Button>
+      {guard.ui}
+    </Section>
+  );
+}
+
+/* Your community (PRD §5, §8): switch between the two at any time. */
+function Community({ s }: { s: State }) {
+  const names = {
+    womens: COMMUNITIES.womens.name,
+    partners: COMMUNITIES.partners.name,
+  } as const;
+  const current = s.me.community ? names[s.me.community] : "";
+  const [pick, setPick] = useState<string>(current);
+  const save = () => {
+    const key = pick === names.partners ? "partners" : pick === names.womens ? "womens" : "";
+    if (!key) {
+      toast(MSG.community);
+      return false;
+    }
+    void settingsService.update({ community: key });
+    toast(`You're in the ${pick}.`);
+    return true;
+  };
+  const guard = useUnsavedGuard({ dirty: pick !== current, onSave: save });
+  return (
+    <Section
+      id="community"
+      title="Your community"
+      description="Content and tools are the same in both communities. Only the space differs, and you can join any group in either."
+    >
+      <Choices
+        legend="Your community"
+        options={[names.womens, names.partners]}
+        value={pick ? [pick] : []}
+        onChange={([c]) => setPick(c ?? "")}
+        columns={1}
+        hint={
+          pick === names.partners
+            ? COMMUNITIES.partners.blurb
+            : pick
+              ? COMMUNITIES.womens.blurb
+              : undefined
+        }
+      />
+      <Button onClick={save}>Save community</Button>
+      {guard.ui}
+    </Section>
+  );
+}
+
+/* What you're looking for (PRD §5 screen 4): shapes which suggestions come first. */
+function LookingFor({ s }: { s: State }) {
+  const me = s.me;
+  const [looking, setLooking] = useState<string[]>(me.lookingFor);
+  const [style, setStyle] = useState<string>(me.connectStyle[0] ?? "");
+  const [error, setError] = useState<string>();
+  const same = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
+  const dirty = !same(looking, me.lookingFor) || style !== (me.connectStyle[0] ?? "");
+  const save = () => {
+    if (!looking.length) {
+      setError(MSG.lookingFor);
+      return false;
+    }
+    setError(undefined);
+    void settingsService.update({ lookingFor: looking, connectStyle: style ? [style] : [] });
+    toast("Saved. Your suggestions will refresh.");
+    return true;
+  };
+  const guard = useUnsavedGuard({ dirty, onSave: save });
+  return (
+    <Section
+      id="looking"
+      title="What you're looking for"
+      description="Decides which suggestions you see first. Only you see these answers."
+    >
+      <Choices
+        legend="I'm looking for"
+        multi
+        options={LOOKING_FOR}
+        value={looking}
+        onChange={setLooking}
+        error={error}
+      />
+      <Choices
+        legend="How I like to connect"
+        options={CONNECT_STYLES}
+        value={style ? [style] : []}
+        onChange={([c]) => setStyle(c ?? "")}
+        hint="Optional."
+      />
+      <Button onClick={save}>Save</Button>
       {guard.ui}
     </Section>
   );
@@ -976,6 +1194,24 @@ const GROUPS: { heading: string; items: Item[] }[] = [
               : "Not set",
       },
       {
+        id: "about",
+        label: "About you",
+        Icon: IdCard,
+        status: (s) => s.me.gender || "Not set",
+      },
+      {
+        id: "community",
+        label: "Your community",
+        Icon: Trees,
+        status: (s) => (s.me.community ? COMMUNITIES[s.me.community].name : "Not chosen"),
+      },
+      {
+        id: "looking",
+        label: "What you're looking for",
+        Icon: HeartHandshake,
+        status: (s) => s.me.lookingFor[0] ?? "Not set",
+      },
+      {
         id: "notifications",
         label: "Notifications",
         Icon: Bell,
@@ -1133,6 +1369,12 @@ export default function SettingsPage() {
         return <Privacy s={s} />;
       case "journey":
         return <Journey key={s.me.healthConsent ? "c" : "n"} s={s} />;
+      case "about":
+        return <AboutYou s={s} />;
+      case "community":
+        return <Community s={s} />;
+      case "looking":
+        return <LookingFor s={s} />;
       case "consent":
         return <Consent s={s} />;
       case "notifications":

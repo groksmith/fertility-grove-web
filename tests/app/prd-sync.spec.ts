@@ -92,3 +92,39 @@ test("visitors can browse Learn and see an article's summary", async ({ page }) 
   ).toBeVisible();
   expect(health.problems).toEqual([]);
 });
+
+test("Settings edits About you, community and what you're looking for", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/settings#about", { waitUntil: "networkidle" });
+  await expect(page.getByRole("heading", { name: "About you" })).toBeVisible();
+  await page.getByLabel("ZIP code").fill("12");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByText("Enter a valid ZIP code.")).toBeVisible();
+  await page.getByLabel("ZIP code").fill("94110");
+  const aboutYou = page.waitForRequest((r) => r.url().endsWith("/api/v1/profile/me/about-you"));
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  expect((await aboutYou).postDataJSON()).toMatchObject({ zipCode: "94110" });
+
+  await page.goto("/settings#community", { waitUntil: "networkidle" });
+  await page.getByText("Partners & Men's Community", { exact: true }).click();
+  const community = page.waitForRequest((r) => r.url().endsWith("/api/v1/profile/me/community"));
+  await page.getByRole("button", { name: "Save community" }).click();
+  expect((await community).postDataJSON()).toMatchObject({
+    communityId: "66666666-6666-4666-8666-666666666666",
+  });
+
+  await page.goto("/settings#looking", { waitUntil: "networkidle" });
+  await expect(page.getByRole("heading", { name: "What you're looking for" })).toBeVisible();
+  await expect(page.getByRole("group", { name: /How I like to connect/ })).toBeVisible();
+});
+
+test("Settings › Journey offers the next treatment date and the other diagnosis", async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.goto("/settings#journey", { waitUntil: "networkidle" });
+  await expect(page.getByLabel(/Next treatment or cycle date/)).toBeVisible();
+  await page.getByRole("group", { name: "Diagnosis" }).getByText("Other", { exact: true }).click();
+  await page.getByRole("button", { name: "Save journey" }).click();
+  await expect(page.getByText("Tell us the diagnosis, or pick another option.")).toBeVisible();
+});

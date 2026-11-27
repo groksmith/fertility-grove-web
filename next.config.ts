@@ -77,6 +77,8 @@ const nextConfig: NextConfig = {
       { source: "/profile", destination: "/dashboard", permanent: false },
       // Routes the API's emails link to (api-handoff: account deletion, notifications).
       { source: "/sign-in", destination: "/login", permanent: false },
+      // The backend builds members' invite links as {site}/join/{code} (GET /invites/mine).
+      { source: "/join/:code", destination: "/invite/:code", permanent: false },
       {
         source: "/settings/notifications",
         destination: "/settings#notifications",
