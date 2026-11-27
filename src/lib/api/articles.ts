@@ -2,7 +2,11 @@
    domain `Article` the Learn screens render: sections of plain paragraphs, a cover and a hue. */
 
 import type { Article, Hue } from "@/types/domain";
-import { labelsOf } from "./options";
+
+/** Learn sends diagnoses, stages and topics as labels already, since guests can't load the option
+    lists (api-handoff "Option lists and codes"); its filters still take codes. */
+const labels = (xs: readonly (string | null)[] | null | undefined) =>
+  (xs ?? []).filter((x): x is string => !!x);
 
 export interface ArticleCardDto {
   id: string;
@@ -115,7 +119,7 @@ export function sectionsOf(body: string): Article["sections"] {
 }
 
 export function toArticle(a: ArticleCardDto | ArticleDto, had?: Article): Article {
-  const diagnoses = labelsOf(a.diagnoses);
+  const diagnoses = labels(a.diagnoses);
   const key = coverKey(diagnoses);
   covers.set(a.id, key);
   const full = "body" in a && !a.isPreview ? a : null;
@@ -128,10 +132,10 @@ export function toArticle(a: ArticleCardDto | ArticleDto, had?: Article): Articl
     slug: a.id,
     title: a.title ?? "",
     summary: a.summary ?? "",
-    diagnosis: diagnoses[0] ?? labelsOf(a.topics)[0] ?? "",
+    diagnosis: diagnoses[0] ?? labels(a.topics)[0] ?? "",
     diagnoses,
-    stages: full ? labelsOf(full.journeyStages) : (had?.stages ?? []),
-    topics: labelsOf(a.topics),
+    stages: full ? labels(full.journeyStages) : (had?.stages ?? []),
+    topics: labels(a.topics),
     reviewedBy: full?.reviewedBy ?? had?.reviewedBy ?? "",
     lastReviewed: date(a.lastReviewedOn),
     nextReview: had?.nextReview ?? "",

@@ -1,7 +1,7 @@
 /* Member profiles, search and peer matches, into the member cache the screens read. */
 
 import { badgesOf, memberFromRef, mergeMembers } from "@/lib/api/members";
-import { labelsOf } from "@/lib/api/options";
+import { labelsOf, pronounsText } from "@/lib/api/options";
 import { useCachedQuery } from "@/lib/api/query";
 import { ApiRequestError } from "@/lib/http";
 import type { State } from "@/lib/mock-server";
@@ -21,7 +21,7 @@ function withProfile(s: State, d: MemberProfileDto): State {
     displayName: d.displayName,
     avatarCode: d.avatarCode,
     treeLevel: d.treeLevel,
-    pronouns: d.pronouns,
+    pronouns: pronounsText(d.pronouns),
   });
   const had = s.members.find((m) => m.id === base.id);
   const stages = labelsOf(d.journeyStages);

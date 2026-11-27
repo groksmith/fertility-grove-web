@@ -25,20 +25,26 @@ guest pages (`/community`, `/community/{id}`) and the signed-out redirect to a p
 
 **FE follow-up when shipped:** none.
 
-## B1 — Avatar background colour and an avatar catalogue
+## B1 — Avatar background colour
 
 PRD §5/§6 (v1.2): a member picks an avatar background colour (Green, Coral, Yellow, Blue, Pink,
-Purple; Green by default) and optionally one of 12 preset avatars. The API has only an opaque
-`avatarCode` (`PUT /profile/me`, `PUT /onboarding/profile`) and its examples use `"leaf-3"`.
+Purple; Green by default) and optionally one of 12 preset avatars.
 
-**Ask:** either (a) agree that `avatarCode` is the web app's own `"<colour>"` or
-`"<colour>:<preset index 0–11>"` (e.g. `"coral:3"`) and document it in the handoff, or (b) add
-`avatarBackground` (enum of the six colours) and a documented preset code list.
+**Done on the backend:** the preset avatars are the `avatar` option list (`avatar_01`…, from
+`GET /onboarding/options`), and `avatarCode` takes one of those codes or `null`.
 
-**Today:** the web app writes `"<colour>"` / `"<colour>:<index>"` and reads anything else as Green
-with the member's initial.
+**Still needed:** a place for the background colour. Add `avatarBackground` (the six colours, Green
+by default) to `PUT /onboarding/profile` and `PUT /profile/me`, and return it wherever `avatarCode`
+is returned (profiles, post and comment authors, matches, conversations, mentorships, group poster
+avatars), so other members see the colour (PRD §5 acceptance criterion 19). The avatar list also
+needs 12 entries, in the order the web app paints them: orange, olive branch, fern, swallow,
+mountains, wave, pine cone, moon and stars, oak leaf, owl, fox, sunflower.
 
-**FE follow-up when shipped:** map the agreed fields in `src/lib/api/members.ts`.
+**Today:** the web app sends the catalogue code by position and keeps the member's colour on their
+own device only; everyone else sees Green.
+
+**FE follow-up when shipped:** read and send `avatarBackground` in `src/lib/api/members.ts` and
+`src/features/auth/commands.ts`, and drop `rememberHue` / `rememberedHue`.
 
 ## B2 — Change password while signed in
 

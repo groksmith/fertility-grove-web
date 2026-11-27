@@ -194,7 +194,11 @@ export function toGroup(g: GroupDto, had?: Group): Group {
     visibleToGuests: g.visibleToGuests ?? had?.visibleToGuests ?? false,
     members: g.memberCount ?? had?.members ?? 0,
     postsThisWeek: g.postsThisWeek ?? had?.postsThisWeek ?? 0,
-    posterAvatars: g.posterAvatars?.map((a) => decodeAvatar(a.avatarCode)) ?? had?.posterAvatars,
+    posterAvatars:
+      g.posterAvatars?.map((a) => {
+        const { hue, preset } = decodeAvatar(a.avatarCode);
+        return { hue: hue ?? "green", preset };
+      }) ?? had?.posterAvatars,
     readingLinks: g.readingLinks ?? had?.readingLinks,
     canReadPosts: g.canReadPosts ?? had?.canReadPosts,
     membersOnlyNotice: g.membersOnlyNotice ?? had?.membersOnlyNotice,

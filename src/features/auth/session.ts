@@ -4,7 +4,7 @@
    part of it) after a write. */
 
 import { daysSince, messagePolicy, treeLevel } from "@/lib/api/enums";
-import { decodeAvatar, mergeMembers } from "@/lib/api/members";
+import { decodeAvatar, mergeMembers, rememberedHue } from "@/lib/api/members";
 import {
   communityKey,
   labelOf,
@@ -65,7 +65,7 @@ function profileToMe(p: MyProfile, prev: Me): Partial<Me> {
     zip: p.zipCode ?? "",
     aboutMe: p.aboutMe ?? "",
     myStory: p.myStory ?? "",
-    avatarHue: avatar.hue,
+    avatarHue: rememberedHue() ?? avatar.hue ?? "green",
     avatarPreset: avatar.preset ?? -1,
     community: communityKey(p.communityId) || prev.community,
     stages: labelsOf(p.journeyStages),

@@ -2,12 +2,18 @@
    (PUT /onboarding/*) and Settings (PUT /profile/me/*) send the same shapes. */
 
 import { apiMessagePolicy } from "@/lib/api/enums";
-import { avatarCode } from "@/lib/api/members";
+import { avatarCode, rememberHue } from "@/lib/api/members";
 import { codeOf, codesOf, communityIdOf } from "@/lib/api/options";
 import type { Me } from "@/lib/mock-server";
 
 const orNull = (v: string | undefined | null) => (v?.trim() ? v.trim() : null);
 const codeOrNull = (v: string | undefined | null) => (v ? codeOf(v) : null);
+
+/** The avatar the API stores; its background colour stays on this device until B1 lands. */
+function avatarOf(m: Me) {
+  rememberHue(m.avatarHue);
+  return avatarCode(m.avatarPreset);
+}
 
 export const commands = {
   journey: (m: Me) => ({
@@ -48,14 +54,14 @@ export const commands = {
     lastName: m.lastName.trim(),
     handle: m.handle.trim(),
     showRealName: m.showRealName,
-    avatarCode: avatarCode(m.avatarHue, m.avatarPreset),
+    avatarCode: avatarOf(m),
     aboutMe: orNull(m.aboutMe),
   }),
   publicProfile: (m: Me) => ({
     firstName: m.firstName.trim(),
     lastName: m.lastName.trim(),
     showRealName: m.showRealName,
-    avatarCode: avatarCode(m.avatarHue, m.avatarPreset),
+    avatarCode: avatarOf(m),
     aboutMe: orNull(m.aboutMe),
     myStory: orNull(m.myStory),
   }),

@@ -4,6 +4,7 @@ Frontend integration reference for the Fertility Grove public API, one section p
 
 ## Contents
 
+- [Option lists and codes](#option-lists-and-codes) — read first
 - [Sign-in safety](#sign-in-safety)
 - [Account deletion](#account-deletion)
 - [Data export](#data-export)
@@ -20,6 +21,84 @@ Frontend integration reference for the Fertility Grove public API, one section p
 - [Email unsubscribe](#email-unsubscribe)
 - [Learn library](#learn-library)
 - [Crisis check](#crisis-check)
+
+---
+
+## Option lists and codes
+
+Every choice a member picks from a fixed list (avatar, diagnosis, journey stage, pronouns, topic
+tags, …) is sent and stored as an option **code**, never as its label and never as a value the
+frontend makes up. Admins manage these lists, so codes and labels can change without a frontend
+release. **Never hard-code them**: load them from the API.
+
+An unknown, inactive, misspelled or empty-string code is rejected with **422** and
+`"That option isn't available. Choose another one."` on the field, for example:
+
+```json
+{ "status": 422, "errors": { "avatarCode": ["That option isn't available. Choose another one."] } }
+```
+
+Example values elsewhere in this document (`avatar_03`, `endometriosis`, …) are real seeded codes,
+but they illustrate the shape only. Take the actual values from the endpoint below.
+
+### GET /api/v1/onboarding/options
+
+- **Auth**: signed-in member. Open during onboarding and before the current Terms are accepted.
+  Not available to guests (see Open Questions).
+- **Response** (200): every active list, keyed by list name in **camelCase**, items in the admin's
+  order, plus the communities.
+  ```json
+  {
+    "lists": {
+      "avatar": [
+        { "code": "avatar_01", "label": "Avatar 1" },
+        { "code": "avatar_02", "label": "Avatar 2" }
+      ],
+      "pronouns": [
+        { "code": "she_her", "label": "she/her" }
+      ]
+    },
+    "communities": [
+      { "id": "uuid", "name": "…", "description": "…" }
+    ]
+  }
+  ```
+- **Usage**: show `label`, send `code`. Fetch once per session (or per onboarding run) and cache.
+  A list key with no active options is **absent** from `lists`, so read it as `lists.x ?? []`.
+
+### Lists and the fields that take them
+
+| `lists` key | Sent by (request field → endpoint) |
+|---|---|
+| `avatar` | `avatarCode` → `PUT /api/v1/onboarding/profile`, `PUT /api/v1/profile/me`. Single code; send `null` (not `""`) for "no avatar" |
+| `journeyStage` | Onboarding journey screen (`PUT /api/v1/onboarding/journey`); mentoring setup `journeyStages` |
+| `treatment` | Onboarding journey screen; `PUT /api/v1/profile/me/health` |
+| `diagnosis` | `PUT /api/v1/onboarding/diagnosis`; `PUT /api/v1/profile/me/health`; success story publish/edit `diagnoses` (returned as `storyDiagnoses`); mentoring setup `diagnoses` |
+| `pathToParenthood` | `PUT /api/v1/onboarding/diagnosis`; `PUT /api/v1/profile/me/health`; mentoring setup `paths` |
+| `genderIdentity`, `pronouns`, `ageRange` | About you: `PUT /api/v1/onboarding/about-you`, `PUT /api/v1/profile/me/about-you` |
+| `lookingFor`, `connectPreference` | Looking for: `PUT /api/v1/onboarding/looking-for`, `PUT /api/v1/profile/me/looking-for` |
+| `topicTag` | Post `topicTags` (create and edit) |
+| `crisisResource` | Read-only. Show crisis resources from `GET /api/v1/crisis-resources`, not from this list |
+
+`communities` is not a code list: send the community `id` (uuid).
+
+### Codes vs labels in responses
+
+Most responses return **codes** (`avatarCode`, `topicTags`, `profileDiagnoses`, …); map them to
+labels through the cached lists. A few return **labels** already, because guests can't load the
+lists:
+
+- Learn library `diagnoses`, `journeyStages`, `topics` are labels, while its `?diagnosis=` and
+  `?topic=` filters take **codes**.
+- Guest posts `authorPronouns` is a label (or the member's own self-description).
+
+If a code in a response is missing from the cached lists (an admin retired it), show nothing for
+it rather than the raw code.
+
+### Open Questions / TODOs
+
+- Guests can't call `GET /api/v1/onboarding/options`, so a guest Learn page has no source for
+  filter codes yet. Needs a public options endpoint or labels-with-codes on Learn.
 
 ---
 
@@ -1551,7 +1630,7 @@ Base: `api/v1/matches`. All endpoints need a signed-in member (bearer token or t
         "memberId": "0d2c6a8e-91f4-4b1e-a7a2-5b9a3c0f4e77",
         "handle": "willowbranch",
         "displayName": "@willowbranch",
-        "avatarCode": "leaf-3",
+        "avatarCode": "avatar_03",
         "treeLevel": "Bush",
         "isFollowing": false,
         "reason": "Similar journey"
@@ -1591,7 +1670,7 @@ Base: `api/v1/matches`. All endpoints need a signed-in member (bearer token or t
           "body": "How long before you felt like yourself again?",
           "source": "PersonalExperience",
           "sourceLink": null,
-          "topicTags": ["surgery"],
+          "topicTags": ["mental_health"],
           "isSaved": false,
           "allowSharingOutside": true,
           "status": "Published",
@@ -1632,7 +1711,7 @@ Base: `api/v1/matches`. All endpoints need a signed-in member (bearer token or t
         "memberId": "0d2c6a8e-91f4-4b1e-a7a2-5b9a3c0f4e77",
         "handle": "willowbranch",
         "displayName": "@willowbranch",
-        "avatarCode": "leaf-3",
+        "avatarCode": "avatar_03",
         "treeLevel": "BlossomTree",
         "badge": "Mentor",
         "bio": "Two rounds of IVF with endometriosis.",
@@ -1902,7 +1981,7 @@ All endpoints need a signed-in member (bearer token or `access_token` cookie, wi
         "iAmMentor": false,
         "otherMemberHandle": "annie",
         "otherMemberDisplayName": "@annie",
-        "otherMemberAvatarCode": "leaf-3",
+        "otherMemberAvatarCode": "avatar_03",
         "otherMemberTreeLevel": "BlossomTree",
         "status": "Expired",
         "message": "I was just diagnosed…",
@@ -2125,7 +2204,7 @@ All endpoints need a signed-in member (bearer token or `access_token` cookie, wi
         "id": "a1b2…",
         "otherMemberHandle": "bea",
         "otherMemberDisplayName": "@bea",
-        "otherMemberAvatarCode": "leaf-3",
+        "otherMemberAvatarCode": "avatar_03",
         "otherMemberTreeLevel": "Bush",
         "lastMessagePreview": "How was your retrieval?",
         "lastMessageIsMine": false,
@@ -2168,7 +2247,7 @@ All endpoints need a signed-in member (bearer token or `access_token` cookie, wi
     "id": "a1b2…",
     "otherMemberHandle": "bea",
     "otherMemberDisplayName": "@bea",
-    "otherMemberAvatarCode": "leaf-3",
+    "otherMemberAvatarCode": "avatar_03",
     "otherMemberTreeLevel": "Bush",
     "isMuted": false,
     "isRequest": false,
@@ -2612,6 +2691,10 @@ outside the app for now (no admin HTTP until D1).
 | `PUT /api/v1/learn/articles/{id}/helpful` body `true`/`false` | member | 204, changeable |
 | `GET /api/v1/profile/me/saved/articles?page&pageSize` | member | `ArticleList`, newest saved first |
 | `GET /api/v1/profile/me/saved/suggestions` | member | `ArticleList` (Worth saving); empty once 4+ items are saved |
+
+`diagnosis` and `topic` filters take option **codes** (`endometriosis`, `ivf`); the article's
+`diagnoses`, `journeyStages` and `topics` come back as **labels**. See
+[Option lists and codes](#option-lists-and-codes).
 
 ```jsonc
 // ArticleCard

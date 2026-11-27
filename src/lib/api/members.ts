@@ -4,26 +4,58 @@
 
 import type { Badge, Hue, Member } from "@/types/domain";
 import { treeLevel } from "./enums";
+import { listCodes } from "./options";
 
 const HUES: readonly Hue[] = ["green", "coral", "yellow", "blue", "pink", "purple"];
 
 /* -------------------------------------------------------------- Avatars */
 
-/** The avatar code the web app stores: `"<hue>"` (initial on that colour) or `"<hue>:<preset>"`.
-    TODO(api): the backend keeps the code opaque and has no avatar catalogue or background colour
-    field yet (docs/backend-tasks.md B1); anything else decodes to a steady default. */
-export function avatarCode(hue: Hue, preset: number | undefined): string {
-  return preset !== undefined && preset >= 0 ? `${hue}:${preset}` : hue;
+/* `avatarCode` is a code from the `avatar` option list (`avatar_01`…), or `null` for none
+   (api-handoff "Option lists and codes"). The preset index the screens use is the code's place in
+   that list, so the twelve painted avatars line up with the catalogue's order. */
+
+/** The code for preset `preset` (0-based), or `null` for no avatar. */
+export function avatarCode(preset: number | undefined): string | null {
+  if (preset === undefined || preset < 0) return null;
+  return listCodes("avatar")[preset] ?? `avatar_${String(preset + 1).padStart(2, "0")}`;
 }
 
-export function decodeAvatar(code: string | null | undefined): { hue: Hue; preset?: number } {
-  if (!code) return { hue: "green" };
+/** The preset index for a code; `undefined` for none or one we can't place. A pre-catalogue
+    `"<hue>:<preset>"` code still reads, colour included. */
+export function decodeAvatar(code: string | null | undefined): { hue?: Hue; preset?: number } {
+  if (!code) return {};
+  const at = listCodes("avatar").indexOf(code);
+  if (at >= 0) return { preset: at };
+  const seeded = /^avatar_(\d+)$/.exec(code);
+  if (seeded) return { preset: Number(seeded[1]) - 1 };
   const [hue, preset] = code.split(":");
   if (hue && (HUES as readonly string[]).includes(hue)) {
     const n = preset === undefined ? Number.NaN : Number(preset);
     return { hue: hue as Hue, preset: Number.isInteger(n) && n >= 0 ? n : undefined };
   }
-  return { hue: "green" };
+  return {};
+}
+
+/* TODO(api): the API has no avatar background colour yet (docs/backend-tasks.md B1). Until it
+   does, the member's own choice is kept on this device, and everyone else shows the PRD's default,
+   Green. */
+const HUE_KEY = "fg.avatarHue";
+
+export function rememberHue(hue: Hue) {
+  try {
+    localStorage.setItem(HUE_KEY, hue);
+  } catch {
+    // Storage blocked: the colour lasts for this visit only.
+  }
+}
+
+export function rememberedHue(): Hue | undefined {
+  try {
+    const h = localStorage.getItem(HUE_KEY);
+    return h && (HUES as readonly string[]).includes(h) ? (h as Hue) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /* ---------------------------------------------------------- Display name */
@@ -101,7 +133,7 @@ export function memberFromRef(ref: MemberRef): Member {
     lastInitial: name.lastInitial,
     showRealName: name.showRealName || !handle,
     pronouns: ref.pronouns || undefined,
-    avatarHue: avatar.hue,
+    avatarHue: (ref.isMe ? rememberedHue() : undefined) ?? avatar.hue ?? "green",
     avatar: avatar.preset,
     sunlight: 0,
     level: treeLevel(ref.treeLevel),

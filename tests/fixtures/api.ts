@@ -89,7 +89,7 @@ const PROFILE = {
   lastName: "Marsh",
   showRealName: false,
   displayName: "@annie_grows",
-  avatarCode: "coral",
+  avatarCode: "avatar_03",
   aboutMe: "Starting IVF this winter.",
   myStory: null,
   genderIdentity: "female",
@@ -128,7 +128,8 @@ const ARTICLE_CARD = {
   id: "44444444-4444-4444-8444-444444444444",
   title: "Endometriosis and fertility",
   summary: "What endometriosis is and how it can affect getting pregnant.",
-  diagnoses: ["endometriosis"],
+  // Learn answers in labels, not codes (api-handoff "Option lists and codes").
+  diagnoses: ["Endometriosis"],
   topics: ["Surgery"],
   lastReviewedOn: "2026-10-01",
   isSaved: false,
@@ -158,7 +159,13 @@ const GETS: [RegExp, unknown][] = [
   [
     /^\/onboarding\/options$/,
     {
-      lists: {},
+      lists: {
+        avatar: Array.from({ length: 12 }, (_, i) => ({
+          code: `avatar_${String(i + 1).padStart(2, "0")}`,
+          label: `Avatar ${i + 1}`,
+        })),
+        pronouns: [{ code: "she_her", label: "she/her" }],
+      },
       communities: [
         { id: PROFILE.communityId, name: "Women's Community", description: "" },
         {
@@ -188,7 +195,7 @@ const GETS: [RegExp, unknown][] = [
       handle: PROFILE.handle,
       displayName: PROFILE.displayName,
       pronouns: "she/her",
-      avatarCode: "coral",
+      avatarCode: "avatar_03",
       aboutMe: PROFILE.aboutMe,
       myStory: null,
       journeyStages: [],

@@ -1,7 +1,8 @@
 /* Answer options travel as codes ("recently_diagnosed") and show as labels ("Recently diagnosed").
    The catalogue comes from GET /api/v1/onboarding/options and is registered here once loaded; until
-   then, and for anything it doesn't list, a label's code is its snake_case form, which is how the
-   backend writes them. Screens keep using the labels in `config/options.ts`. */
+   then, a label's code is its snake_case form, which is how the backend writes them. A code nobody
+   knows (an admin retired it) shows as nothing, never as the raw code (api-handoff "Option lists
+   and codes"). Screens keep using the labels in `config/options.ts`. */
 
 import {
   AGE_RANGES,
@@ -24,6 +25,8 @@ interface OptionDto {
 
 const toCode = new Map<string, string>();
 const toLabel = new Map<string, string>();
+/** Each list's codes in the admin's order (`avatar`, `diagnosis`…). */
+const lists = new Map<string, string[]>();
 
 function slug(label: string) {
   return label
@@ -33,16 +36,23 @@ function slug(label: string) {
 }
 
 /** Register the backend's catalogue (`lists` from GET /onboarding/options). */
-export function registerOptions(lists: Record<string, OptionDto[]> | null | undefined) {
-  for (const options of Object.values(lists ?? {})) {
+export function registerOptions(catalogue: Record<string, OptionDto[]> | null | undefined) {
+  for (const [key, options] of Object.entries(catalogue ?? {})) {
     if (!Array.isArray(options)) continue;
+    const codes: string[] = [];
     for (const o of options) {
-      if (!o.code || !o.label) continue;
+      if (!o.code) continue;
+      codes.push(o.code);
+      if (!o.label) continue;
       toCode.set(o.label, o.code);
       toLabel.set(o.code, o.label);
     }
+    lists.set(key, codes);
   }
 }
+
+/** One list's codes in order; empty until the catalogue loads (guests never load it). */
+export const listCodes = (key: string): readonly string[] => lists.get(key) ?? [];
 
 /** Seed the fallback reverse map so codes decode before the catalogue loads. */
 export function registerLabels(labels: readonly string[]) {
@@ -57,7 +67,7 @@ export function codeOf(label: string): string {
 }
 
 export function labelOf(code: string): string {
-  return toLabel.get(code) ?? code;
+  return toLabel.get(code) ?? "";
 }
 
 /* ----------------------------------------------------------- Communities */
@@ -80,9 +90,20 @@ export const communityKey = (id: string | null | undefined): CommunityId | "" =>
 export const communityIdOf = (key: CommunityId | ""): string | undefined =>
   key ? communityIds.get(key) : undefined;
 
+/** Pronouns come back as a code or as the member's own words ("Prefer to self-describe"): decode
+    a code, keep the words, and drop a code nobody knows. */
+export function pronounsText(v: string | null | undefined): string | undefined {
+  if (!v) return undefined;
+  if (!/^[a-z0-9_]+$/.test(v)) return v;
+  return labelOf(v) || undefined;
+}
+
 export const codesOf = (labels: readonly string[]) => labels.map(codeOf);
 export const labelsOf = (codes: readonly (string | null)[] | null | undefined) =>
-  (codes ?? []).filter((c): c is string => !!c).map(labelOf);
+  (codes ?? [])
+    .filter((c): c is string => !!c)
+    .map(labelOf)
+    .filter(Boolean);
 
 registerLabels([
   ...JOURNEY_STAGES,

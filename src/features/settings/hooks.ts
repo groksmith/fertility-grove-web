@@ -4,7 +4,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { type MySunlight, sunlightHistory } from "@/features/auth";
 import { badgesOf, memberFromRef } from "@/lib/api/members";
-import { labelsOf } from "@/lib/api/options";
+import { labelsOf, pronounsText } from "@/lib/api/options";
 import { PAGE_SIZE, type Paged, useCachedPages } from "@/lib/api/query";
 import { httpClient } from "@/lib/http";
 import { useStore } from "@/lib/mock-server";
@@ -91,7 +91,7 @@ export function useProfilePreview(enabled: boolean, me: Member) {
         displayName: d.displayName,
         avatarCode: d.avatarCode,
         treeLevel: d.treeLevel,
-        pronouns: d.pronouns,
+        pronouns: pronounsText(d.pronouns),
       });
       const stages = labelsOf(d.journeyStages);
       const diagnoses = labelsOf(d.diagnoses);
