@@ -5,11 +5,13 @@ import { apiSource, apiStoryType } from "@/lib/api/enums";
 import { codesOf } from "@/lib/api/options";
 import { refresh } from "@/lib/api/query-client";
 import { crisisOf, fail, failure, ok, type Result } from "@/lib/api/result";
+import { isApiId, sampleOnly } from "@/lib/api/samples";
 import { httpClient } from "@/lib/http";
-import { get, set } from "@/lib/mock-server";
+import { demoResult, get, isDemo, set } from "@/lib/mock-server";
 import { notice } from "@/lib/notice";
 import { MSG } from "@/lib/rules/validation";
 import type { Source, StoryType } from "@/types/domain";
+import { demo } from "./demo";
 
 interface WriteDto {
   id: string;
@@ -27,6 +29,7 @@ export const storyService = {
     whatHelped: string[];
     source: Source | "";
   }): Promise<Result> {
+    if (isDemo()) return demoResult(demo.create(st));
     const me = get().me;
     if (me.status === "unconfirmed") return fail(MSG.unconfirmed(me.email), "unconfirmed");
     if (!st.type || !st.title.trim() || !st.body.trim() || !st.source)
@@ -64,6 +67,26 @@ export const storyService = {
   ): Promise<Result> {
     if (!st.type || !st.title.trim() || !st.body.trim() || !st.source)
       return fail(MSG.storyMissing);
+    if (isDemo()) {
+      set((s) => ({
+        ...s,
+        stories: s.stories.map((x) =>
+          x.id === id
+            ? {
+                ...x,
+                type: st.type as StoryType,
+                title: st.title.trim(),
+                body: st.body.trim(),
+                diagnoses: st.diagnoses,
+                whatHelped: st.whatHelped,
+                source: st.source as Source,
+                edited: true,
+              }
+            : x,
+        ),
+      }));
+      return ok();
+    }
     try {
       const sent = await httpClient.send<WriteDto>("PUT", `/success-stories/${id}`, {
         postId: id,
@@ -101,6 +124,11 @@ export const storyService = {
 
   /** DELETE /posts/{id}: a story is a post without a group. */
   async remove(id: string): Promise<Result> {
+    if (isDemo()) {
+      set((s) => ({ ...s, stories: s.stories.filter((x) => x.id !== id) }));
+      return ok();
+    }
+    if (!isApiId(id)) return sampleOnly("story");
     try {
       await httpClient.delete(`/posts/${id}`);
       set((s) => ({ ...s, stories: s.stories.filter((x) => x.id !== id) }));
@@ -115,6 +143,8 @@ export const storyService = {
 
   /** PUT /posts/{id}/vote "Up"; again removes it. Stories take no downvotes. */
   async upvote(id: string): Promise<Result> {
+    if (isDemo()) return demoResult(demo.upvote(id));
+    if (!isApiId(id)) return sampleOnly("story");
     const s = get();
     if (s.me.status === "unconfirmed") return fail(MSG.unconfirmed(s.me.email), "unconfirmed");
     const story = s.stories.find((x) => x.id === id);
@@ -140,6 +170,8 @@ export const storyService = {
 
   /** PUT /posts/{id}/saved. */
   async toggleSave(id: string): Promise<Result> {
+    if (isDemo()) return demoResult(demo.toggleSave(id));
+    if (!isApiId(id)) return sampleOnly("story");
     const story = get().stories.find((x) => x.id === id);
     if (!story) return ok();
     const apply = (saved: boolean) =>

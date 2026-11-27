@@ -4,6 +4,7 @@
 import { type PostListDto, withPosts } from "@/lib/api/content";
 import { codesOf } from "@/lib/api/options";
 import { PAGE_SIZE, useCachedPages } from "@/lib/api/query";
+import { withSampleStories } from "@/lib/api/samples";
 import { httpClient } from "@/lib/http";
 
 /** GET /success-stories?diagnoses&whatHelped (labels in, codes sent). */
@@ -16,6 +17,11 @@ export function useStories(filters: { diagnoses?: string[]; whatHelped?: string[
       httpClient.get<PostListDto>("/success-stories", {
         query: { diagnoses, whatHelped, page, pageSize: PAGE_SIZE },
       }),
-    apply: (s, d) => withPosts(s, d.posts),
+    apply: (s, d, page) => {
+      const next = withPosts(s, d.posts);
+      // No stories shared yet: the prototype's sample stories stand in until there are.
+      const whole = !diagnoses.length && !whatHelped.length && page === 1;
+      return whole ? withSampleStories(next, d.totalCount > 0) : next;
+    },
   });
 }

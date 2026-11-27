@@ -12,7 +12,7 @@ import { Controller, useForm } from "react-hook-form";
 import { TreeArt } from "@/components/art/Tree";
 import { PostCard } from "@/components/common/PostCard";
 import { ReportDialog, useResult } from "@/components/common/Safety";
-import { Avatar, BadgeChip, EmptyState, FormField } from "@/components/shared";
+import { Avatar, BadgeChip, EmptyState, FormField, SampleTag } from "@/components/shared";
 import { Button, LinkButton } from "@/components/ui/button";
 import { ChipSelect } from "@/components/ui/chip-select";
 import { Dialog } from "@/components/ui/dialog";
@@ -120,7 +120,7 @@ export default function MemberPage() {
   }, [isMe, router]);
 
   if (isMe) return null;
-  if (query.isPending && !member?.followers) return null;
+  if (query.isPending && !member?.followers && !member?.sample) return null;
   if (!member || member.unavailable || s.blocked.includes(member.id)) {
     return (
       <EmptyState
@@ -162,6 +162,7 @@ export default function MemberPage() {
               <h1 className="serif text-[28px] leading-tight [overflow-wrap:anywhere] lg:text-[32px]">
                 {name}
               </h1>
+              {member.sample && <SampleTag className="mt-1" />}
               <p className="mt-0.5 text-[14px] text-muted">
                 {member.showRealName && <>@{member.handle} · </>}
                 {member.pronouns && <>{member.pronouns} · </>}
@@ -312,9 +313,11 @@ export default function MemberPage() {
             </div>
             <div className="p-5">
               <p className="serif text-[26px] leading-none">{member.level}</p>
-              <p className="tabular mt-1 text-[14px] text-muted">
-                {member.sunlight.toLocaleString()} Sunlight
-              </p>
+              {member.sunlight !== undefined && (
+                <p className="tabular mt-1 text-[14px] text-muted">
+                  {member.sunlight.toLocaleString()} Sunlight
+                </p>
+              )}
             </div>
           </Panel>
         )}

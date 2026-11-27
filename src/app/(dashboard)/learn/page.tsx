@@ -12,10 +12,11 @@ import Link from "next/link";
 import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { Spot } from "@/components/art/Scenes";
-import { EmptyState, MoreOnScroll, PageHeader } from "@/components/shared";
+import { EmptyState, MoreOnScroll, PageHeader, SampleTag } from "@/components/shared";
 import { Panel } from "@/components/ui/panel";
 import { articleCover, useArticles, useRecommendedArticles } from "@/features/learn";
 import { searchSchema } from "@/features/search";
+import { labelsOf, listCodes } from "@/lib/api/options";
 import { useStore } from "@/lib/mock-server";
 import type { Article } from "@/types/domain";
 
@@ -36,6 +37,7 @@ function ArticleTile({ a, why }: { a: Article; why?: string }) {
         />
       </span>
       <span className="flex flex-1 flex-col p-5">
+        {a.sample && <SampleTag className="mb-2 self-start" />}
         {why && <span className="text-[13px] font-semibold text-green-ink">{why}</span>}
         <span
           className={`${why ? "mt-1" : ""} text-[17px] leading-snug font-semibold text-ink group-hover:underline`}
@@ -71,20 +73,56 @@ export default function LearnPage() {
   const idsOf = (data: typeof filtered.data) =>
     (data?.pages ?? []).flatMap((p) => p.articles.map((a) => a.id));
 
+  // While the library is empty the prototype's sample articles stand in, and the screen matches,
+  // searches and filters them itself, as the prototype did.
+  const demo = useStore((s) => s.demo === true);
+  const samples = demo || ARTICLES.some((a) => a.sample);
+
   // Matched to the member's journey by the API, with its reason; health answers decide.
-  const recommended = me.healthConsent
-    ? (picks ?? []).flatMap((p) => ARTICLES.filter((a) => a.slug === p.slug)).slice(0, 3)
-    : [];
+  const recommended = !me.healthConsent
+    ? []
+    : samples
+      ? ARTICLES.filter(
+          (a) =>
+            a.diagnoses.some((d) => me.diagnoses.includes(d)) ||
+            a.stages.some((st) => me.stages.includes(st)),
+        )
+          .sort(
+            (a, b) =>
+              Number(b.diagnoses.some((d) => me.diagnoses.includes(d))) -
+              Number(a.diagnoses.some((d) => me.diagnoses.includes(d))),
+          )
+          .slice(0, 3)
+      : (picks ?? []).flatMap((p) => ARTICLES.filter((a) => a.slug === p.slug)).slice(0, 3);
 
-  const whyFor = (a: Article) =>
-    picks?.find((p) => p.slug === a.slug)?.why ?? `Matched on ${a.diagnosis.toLowerCase()}`;
+  const whyFor = (a: Article) => {
+    const picked = picks?.find((p) => p.slug === a.slug)?.why;
+    if (picked) return picked;
+    const dx = a.diagnoses.find((d) => me.diagnoses.includes(d));
+    const st = a.stages.find((x) => me.stages.includes(x));
+    const on = dx ?? st ?? a.diagnosis;
+    return `Matched on ${/^[A-Z]{2,}/.test(on) ? on : on.toLowerCase()}`;
+  };
 
-  const topics = Array.from(new Set(ARTICLES.flatMap((a) => a.topics))).sort();
+  // Every topic the library can filter by (the `topicTag` option list), else those of what loaded.
+  const catalogue = samples ? [] : labelsOf(listCodes("topicTag"));
+  const topics = catalogue.length
+    ? catalogue
+    : Array.from(new Set(ARTICLES.flatMap((a) => a.topics))).sort();
 
-  const results =
-    term || topic
-      ? idsOf(filtered.data).flatMap((id) => ARTICLES.filter((a) => a.slug === id))
-      : null;
+  const needle = term.toLowerCase();
+  const results = !(term || topic)
+    ? null
+    : samples
+      ? ARTICLES.filter((a) =>
+          needle
+            ? [a.title, a.summary, ...a.sections.flatMap((s) => [s.heading, ...s.body])]
+                .join(" ")
+                .toLowerCase()
+                .includes(needle)
+            : topic !== null && a.topics.includes(topic),
+        )
+      : idsOf(filtered.data).flatMap((id) => ARTICLES.filter((a) => a.slug === id));
 
   const finding = recommended.length
     ? `${recommended.length} reviewed ${recommended.length === 1 ? "article matches" : "articles match"} your journey. ${saved.length} saved for your next appointment.`
@@ -129,7 +167,7 @@ export default function LearnPage() {
               Clear
             </button>
           </div>
-          {filtered.isPending ? null : results.length ? (
+          {!samples && filtered.isPending ? null : results.length ? (
             <>
               <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {results.map((a) => (
@@ -191,8 +229,9 @@ export default function LearnPage() {
                         />
                       </span>
                       <span className="min-w-0">
-                        <span className="block text-[15px] font-semibold text-ink">
+                        <span className="flex items-center gap-2 text-[15px] font-semibold text-ink">
                           {a.diagnosis === "Unexplained" ? "Unexplained infertility" : a.diagnosis}
+                          {a.sample && <SampleTag />}
                         </span>
                         <span className="block truncate text-[13px] text-muted">
                           {a.title} · {a.readMinutes} min

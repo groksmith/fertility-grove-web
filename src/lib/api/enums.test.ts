@@ -71,6 +71,10 @@ describe("options and avatars", () => {
     expect(decodeAvatar(null)).toEqual({});
   });
 
+  it("leaves another member's Sunlight unknown rather than 0", () => {
+    expect(memberFromRef({ handle: "bea", displayName: "@bea" }).sunlight).toBeUndefined();
+  });
+
   it("reads display identity from the API's display name", () => {
     expect(memberFromRef({ handle: "annie", displayName: "Annie M." })).toMatchObject({
       showRealName: true,

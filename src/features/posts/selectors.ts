@@ -1,9 +1,10 @@
 /* Derived views the screens read: pure functions of the mock server's state. */
 
 import { NO_DOWNVOTE } from "@/config/options";
-import { person } from "@/features/auth";
+import { journey, person } from "@/features/auth";
 import type { State } from "@/lib/mock-server";
 import { groupOpenToGuests, guestCanRead, publicAuthor, publicPostState } from "@/lib/rules/guests";
+import { matchGroups } from "@/lib/rules/matching";
 import type { Comment, Group, Member, Post } from "@/types/domain";
 
 export const score = (x: { up: number; down: number }) => x.up - x.down;
@@ -45,8 +46,22 @@ export function feed(
     items = base
       .filter((p) => s.joined.includes(p.groupId) || p.authorId === "me")
       .map((post) => ({ post }));
-    // Up to 3 a day from matched groups the member hasn't joined (GET /matches/posts).
-    const extra = (s.matchedPosts ?? [])
+    // Up to 3 a day from matched groups the member hasn't joined (GET /matches/posts). The
+    // offline demo picks them from its own matches, never Members-only, as the prototype did.
+    const demoMatched = s.demo
+      ? matchGroups(journey(s), s.groups, s.notForMe, 5)
+          .filter((m) => !s.joined.includes(m.group.id) && m.group.readAccess === "any")
+          .map((m) => m.group)
+      : [];
+    const matched = s.demo
+      ? base
+          .filter((p) => demoMatched.some((g) => g.id === p.groupId))
+          .map((post) => ({
+            postId: post.id,
+            reason: `From ${s.groups.find((g) => g.id === post.groupId)?.name}, a group matched to you`,
+          }))
+      : (s.matchedPosts ?? []);
+    const extra = matched
       .map((m) => ({ post: base.find((p) => p.id === m.postId), matched: m.reason }))
       .filter((m): m is { post: Post; matched: string } => !!m.post)
       .filter((m) => !items.some((i) => i.post.id === m.post.id))

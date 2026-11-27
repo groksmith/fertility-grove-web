@@ -9,6 +9,7 @@ export {
 } from "./content";
 export {
   learnKeys,
+  sampleArticle,
   useArticle,
   useArticles,
   usePublicArticle,

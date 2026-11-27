@@ -6,10 +6,11 @@ import { loadSession } from "@/features/auth";
 import { codeOf } from "@/lib/api/options";
 import { refresh } from "@/lib/api/query-client";
 import { attempt, crisisOf, fail, failure, ok, type Result } from "@/lib/api/result";
-import { get, set } from "@/lib/mock-server";
+import { demoResult, get, isDemo, set } from "@/lib/mock-server";
 import { notice } from "@/lib/notice";
 import { MSG } from "@/lib/rules/validation";
 import { mentorsApi } from "./api";
+import { demo } from "./demo";
 import { mentorKeys } from "./hooks";
 
 const after = () => refresh(mentorKeys.mentorships, ["conversations"], ["dashboard"]);
@@ -19,6 +20,7 @@ const inList = (list: readonly string[], v: string) => list.includes(v);
 export const mentorService = {
   /** POST /members/{handle}/mentor-requests. */
   async request(mentorId: string, message: string, helpWith: string[]): Promise<Result> {
+    if (isDemo()) return demoResult(demo.request(mentorId, message, helpWith));
     const s = get();
     if (s.me.status === "unconfirmed") return fail(MSG.unconfirmed(s.me.email), "unconfirmed");
     if (!message.trim()) return fail(MSG.mentorMessage);
@@ -34,6 +36,7 @@ export const mentorService = {
 
   /** POST /mentorships/{id}/answer. Accepting opens the mentoring conversation. */
   async respond(id: string, accept: boolean, note: string): Promise<Result> {
+    if (isDemo()) return demoResult(demo.respond(id, accept, note));
     try {
       const sent = await mentorsApi.answer(id, accept, note.trim());
       set((s) => ({
@@ -59,6 +62,7 @@ export const mentorService = {
 
   /** POST /mentorships/{id}/end. */
   async end(requestId: string): Promise<Result> {
+    if (isDemo()) return demoResult(demo.end(requestId));
     const r = await attempt(() => mentorsApi.end(requestId));
     if (!r.ok) {
       notice(r.error);
@@ -80,6 +84,7 @@ export const mentorService = {
     helpful: "Yes" | "Somewhat" | "No" = "Yes",
     thanks = "",
   ): Promise<Result> {
+    if (isDemo()) return demoResult(demo.feedback(requestId));
     const r = await attempt(() => mentorsApi.feedback(requestId, helpful, thanks.trim()));
     if (!r.ok) {
       notice(r.error);
@@ -111,6 +116,7 @@ export const mentorService = {
   /** PUT /profile/me/mentoring. Checked here first, so the setup guard gets its answer at once;
       a refusal from the API (bio crisis words, say) arrives as a toast. */
   setup(m: { bio: string; helpsWith: string[]; capacity: number; agreed: boolean }) {
+    if (isDemo()) return demoResult(demo.setup(m));
     const errs: Record<string, string> = {};
     if (!m.bio.trim()) errs.bio = MSG.mentorBio;
     if (!m.helpsWith.length) errs.helpsWith = MSG.mentorHelps;
@@ -150,6 +156,7 @@ export const mentorService = {
 
   /** PUT /profile/me/mentoring/paused. */
   async setPaused(paused: boolean): Promise<Result> {
+    if (isDemo()) return demoResult(demo.setPaused(paused));
     set((s) => ({ ...s, me: { ...s.me, mentoring: { ...s.me.mentoring, paused } } }));
     const r = await attempt(() => mentorsApi.pause(paused));
     if (!r.ok) {
@@ -161,6 +168,7 @@ export const mentorService = {
 
   /** DELETE /profile/me/mentoring: waiting requests are declined with the default note. */
   async turnOff(): Promise<Result> {
+    if (isDemo()) return demoResult(demo.turnOff());
     const r = await attempt(() => mentorsApi.turnOff());
     if (!r.ok) {
       notice(r.error);

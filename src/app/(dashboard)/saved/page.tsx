@@ -17,7 +17,7 @@ import { LinkButton } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { Tabs } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/toast";
-import { person } from "@/features/auth";
+import { journey, person } from "@/features/auth";
 import { articleCover, learnService, useSavedArticles } from "@/features/learn";
 import { savedItems, useSaved } from "@/features/posts";
 import { storyService } from "@/features/stories";
@@ -127,10 +127,21 @@ export default function SavedPage() {
   // While the list is short, offer reviewed articles matched to the member:
   // their diagnosis only counts while health-data consent is on.
   // GET /profile/me/saved/suggestions picks them (empty once 4+ items are saved).
-  const suggestions = (s.suggestedArticles ?? [])
-    .filter((id) => !s.savedArticles.includes(id))
-    .flatMap((id) => s.articles.filter((a) => a.slug === id))
-    .slice(0, 3);
+  // The offline demo picks them itself, matched on the diagnosis, as the prototype did.
+  const dx = journey(s).diagnoses;
+  const suggestions = (
+    s.demo
+      ? s.articles
+          .filter((a) => !s.savedArticles.includes(a.slug))
+          .sort(
+            (a, b) =>
+              Number(b.diagnoses.some((d) => dx.includes(d))) -
+              Number(a.diagnoses.some((d) => dx.includes(d))),
+          )
+      : (s.suggestedArticles ?? [])
+          .filter((id) => !s.savedArticles.includes(id))
+          .flatMap((id) => s.articles.filter((a) => a.slug === id))
+  ).slice(0, 3);
 
   const lists = s.appointmentLists.length;
   const empty =
@@ -172,7 +183,13 @@ export default function SavedPage() {
                   { id: "all", label: "All" },
                   { id: "posts", label: "Posts", count: posts.length },
                   { id: "stories", label: "Stories", count: stories.length },
-                  { id: "articles", label: "Articles", count: articles.length },
+                  {
+                    id: "articles",
+                    label: "Articles",
+                    // The whole count, not only the pages loaded so far. Saved posts and stories
+                    // share one list in the API, so their counts follow what has loaded.
+                    count: articlePages.data?.pages[0]?.totalCount ?? articles.length,
+                  },
                 ]}
               />
               <ul className="mt-5 space-y-3">

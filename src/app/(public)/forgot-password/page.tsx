@@ -10,9 +10,12 @@ import { AuthFrame } from "@/components/common/AuthFrame";
 import { FormField } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { authService, forgotPasswordSchema } from "@/features/auth";
+import { useStore } from "@/lib/mock-server";
 import { MSG } from "@/lib/rules/validation";
 
 export default function ForgotPasswordPage() {
+  // The offline demo has no inbox: it opens the reset screen straight away, as the prototype did.
+  const demo = useStore((s) => s.demo === true);
   // Checked on submit only; the message stays until the next submit, and focus stays put.
   const form = useForm({
     resolver: zodResolver(forgotPasswordSchema),
@@ -34,6 +37,14 @@ export default function ForgotPasswordPage() {
           </p>
           <p className="mt-5 text-[14px] text-muted">
             The link works once and expires in 60 minutes.
+            {demo && (
+              <>
+                {" "}
+                <Link href="/reset-password" className="font-semibold text-accent underline">
+                  Open the link (prototype)
+                </Link>
+              </>
+            )}
           </p>
         </div>
       ) : (

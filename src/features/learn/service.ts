@@ -3,13 +3,25 @@
 
 import { refresh } from "@/lib/api/query-client";
 import { failure, ok, type Result } from "@/lib/api/result";
-import { get, set } from "@/lib/mock-server";
+import { isApiId, sampleOnly } from "@/lib/api/samples";
+import { get, isDemo, set } from "@/lib/mock-server";
 import { notice } from "@/lib/notice";
 import { learnApi } from "./api";
 import { learnKeys } from "./hooks";
 
 export const learnService = {
   async toggleSave(id: string): Promise<Result> {
+    // The offline demo keeps it on the store, as the prototype did.
+    if (isDemo()) {
+      set((s) => ({
+        ...s,
+        savedArticles: s.savedArticles.includes(id)
+          ? s.savedArticles.filter((x) => x !== id)
+          : [...s.savedArticles, id],
+      }));
+      return ok();
+    }
+    if (!isApiId(id)) return sampleOnly("article");
     const was = get().savedArticles.includes(id);
     const apply = (saved: boolean) =>
       set((s) => ({
@@ -35,6 +47,11 @@ export const learnService = {
   },
 
   async rate(id: string, v: "yes" | "no"): Promise<Result> {
+    if (isDemo()) {
+      set((s) => ({ ...s, articleHelpful: { ...s.articleHelpful, [id]: v } }));
+      return ok();
+    }
+    if (!isApiId(id)) return sampleOnly("article");
     const before = get().articleHelpful[id];
     set((s) => ({ ...s, articleHelpful: { ...s.articleHelpful, [id]: v } }));
     try {

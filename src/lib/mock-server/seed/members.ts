@@ -38,7 +38,7 @@ function m(s: Seed): Member {
     followers: 0,
     joinedDaysAgo: 120,
     ...s,
-    level: levelFor(s.sunlight),
+    level: levelFor(s.sunlight ?? 0),
   };
 }
 

@@ -3,10 +3,12 @@
 import { refresh } from "@/lib/api/query-client";
 import { attempt } from "@/lib/api/result";
 import { httpClient } from "@/lib/http";
-import { get, set } from "@/lib/mock-server";
+import { demoResult, get, isDemo, set } from "@/lib/mock-server";
+import { demo } from "./demo";
 
 export const notificationService = {
   async markAllRead() {
+    if (isDemo()) return demoResult(demo.markAllRead());
     const ids = get()
       .notifications.filter((n) => !n.read)
       .map((n) => n.id);

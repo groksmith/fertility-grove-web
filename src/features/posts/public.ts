@@ -6,10 +6,16 @@ import { type GroupDto, toGroup } from "@/lib/api/content";
 import { minutesSince, postType, source } from "@/lib/api/enums";
 import { badgesOf, memberFromRef } from "@/lib/api/members";
 import { labelsOf } from "@/lib/api/options";
+import { isApiId, withSampleGroups } from "@/lib/api/samples";
 import { ApiRequestError } from "@/lib/http";
+import { get } from "@/lib/mock-server";
 import type { Group } from "@/types/domain";
 import { postsApi, type VisitorPostDto } from "./api";
-import type { PublicPost } from "./selectors";
+import { guestGroups, type PublicPost, publicFeed, publicGroup, publicPost } from "./selectors";
+
+/** The prototype's community, for visitors while the API has no public groups or posts yet. */
+const samples = () =>
+  withSampleGroups({ ...get(), groups: [], posts: [], comments: [], members: [] }, false);
 
 function stubGroup(id: string, name: string | null): Group {
   return toGroup({
@@ -73,7 +79,10 @@ const orNull = async <T>(run: () => Promise<T>) => {
 export function usePublicGroups() {
   return useQuery({
     queryKey: ["public", "groups"],
-    queryFn: async () => (await postsApi.publicGroups()).groups.map((g: GroupDto) => toGroup(g)),
+    queryFn: async () => {
+      const groups = (await postsApi.publicGroups()).groups.map((g: GroupDto) => toGroup(g));
+      return groups.length ? groups : guestGroups(samples());
+    },
   });
 }
 
@@ -82,13 +91,19 @@ export function usePublicFeed(groupId?: string) {
   return useInfiniteQuery({
     queryKey: ["public", "feed", groupId ?? ""],
     initialPageParam: 1,
-    queryFn: ({ pageParam }) => postsApi.publicFeed(groupId, pageParam),
+    // A sample group's feed never goes to the API.
+    queryFn: ({ pageParam }) =>
+      groupId && !isApiId(groupId)
+        ? Promise.resolve({ posts: [], totalCount: 0, page: 1, pageSize: 20 })
+        : postsApi.publicFeed(groupId, pageParam),
     getNextPageParam: (last) =>
       last.page * last.pageSize < last.totalCount ? last.page + 1 : undefined,
-    select: (data) => ({
-      ...data,
-      items: data.pages.flatMap((p) => p.posts.map((v) => toPublicPost(v, true))),
-    }),
+    select: (data) => {
+      const items = data.pages.flatMap((p) => p.posts.map((v) => toPublicPost(v, true)));
+      // Nothing public yet: the prototype's posts stand in until there is.
+      const empty = !items.length && data.pages[0]?.totalCount === 0;
+      return { ...data, items: empty ? publicFeed(samples(), groupId) : items };
+    },
   });
 }
 
@@ -97,6 +112,7 @@ export function usePublicGroup(id: string) {
   return useQuery({
     queryKey: ["public", "group", id],
     queryFn: async () => {
+      if (!isApiId(id)) return publicGroup(samples(), id);
       const g = await orNull(() => postsApi.publicGroup(id));
       if (!g) return null;
       const group = toGroup({ ...g, visibleToGuests: true });
@@ -112,6 +128,7 @@ export function usePublicPost(id: string) {
   return useQuery({
     queryKey: ["public", "post", id],
     queryFn: async () => {
+      if (!isApiId(id)) return publicPost(samples(), id);
       const p = await orNull(() => postsApi.publicPost(id));
       return p?.visitor ? toPublicPost(p.visitor, p.shownToVisitors) : null;
     },

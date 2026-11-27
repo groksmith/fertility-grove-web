@@ -4,7 +4,8 @@
 import { commands, loadSession } from "@/features/auth";
 import { failure, ok, type Result } from "@/lib/api/result";
 import { httpClient } from "@/lib/http";
-import { get, type Me, set } from "@/lib/mock-server";
+import { demoResult, get, isDemo, type Me, set } from "@/lib/mock-server";
+import { demo } from "./demo";
 
 interface Progress {
   status: "NotStarted" | "InProgress" | "Complete";
@@ -44,6 +45,7 @@ function applyProgress(p: Progress) {
 export const onboardingService = {
   /** Save one screen's answers. A refusal (a taken handle, say) keeps the member on the screen. */
   async save(step: number, patch: Partial<Me>, skipped?: string[]): Promise<Result> {
+    if (isDemo()) return demoResult(demo.save(step, patch, skipped));
     const before = get().me;
     const next: Me = { ...before, ...patch };
     set((s) => ({
@@ -78,6 +80,7 @@ export const onboardingService = {
 
   /** POST /onboarding/complete. Safe to call twice. Planting the Seed is celebrated once. */
   async completeOnboarding(): Promise<Result> {
+    if (isDemo()) return demoResult(demo.completeOnboarding());
     if (get().step >= 9) return ok();
     try {
       await httpClient.post<Progress>("/onboarding/complete");

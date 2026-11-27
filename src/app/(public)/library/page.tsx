@@ -9,7 +9,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { ReadingFrame } from "@/components/common/AuthFrame";
 import { JoinBlock } from "@/components/common/Guest";
-import { EmptyState, MoreOnScroll } from "@/components/shared";
+import { EmptyState, MoreOnScroll, SampleTag } from "@/components/shared";
 import { articleCover, usePublicArticles } from "@/features/learn";
 
 export default function LibraryPage() {
@@ -60,6 +60,7 @@ export default function LibraryPage() {
                   />
                 </span>
                 <span className="flex flex-1 flex-col p-5">
+                  {a.sample && <SampleTag className="mb-2 self-start" />}
                   <span className="text-[17px] leading-snug font-semibold text-ink group-hover:underline">
                     {a.title}
                   </span>

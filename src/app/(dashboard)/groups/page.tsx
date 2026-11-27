@@ -8,7 +8,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { GroupCover, groupHue } from "@/components/art/Brand";
 import { Spot } from "@/components/art/Scenes";
-import { EmptyState, PageHeader } from "@/components/shared";
+import { EmptyState, PageHeader, SampleTag } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { toast } from "@/components/ui/toast";
@@ -56,6 +56,7 @@ function GroupRow({ group, why }: { group: Group; why?: string }) {
             {group.name}
           </Link>
           <TypeLabel group={group} />
+          {group.sample && <SampleTag />}
           {group.readAccess === "members-only" && (
             <span className="inline-flex items-center gap-1 text-[12.5px] text-muted">
               <Lock size={12} /> Members-only
@@ -67,7 +68,10 @@ function GroupRow({ group, why }: { group: Group; why?: string }) {
           {group.description}
         </p>
         <p className="tabular mt-1 text-[13px] text-muted">
-          {plural(group.members, "member")} · {plural(group.postsThisWeek, "post")} this week
+          {plural(group.members, "member")}
+          {group.postsThisWeek !== undefined && (
+            <> · {plural(group.postsThisWeek, "post")} this week</>
+          )}
         </p>
       </div>
       <Button

@@ -111,7 +111,7 @@ function TreeHero() {
           <p className="mt-1 text-[14px] text-green-ink">Your tree level</p>
           <p className="mt-3 flex items-baseline gap-2">
             <span className="tabular text-[30px] font-semibold text-ink">
-              {me.sunlight.toLocaleString()}
+              {(me.sunlight ?? 0).toLocaleString()}
             </span>
             <span className="text-[15px] text-ink-soft">Sunlight</span>
           </p>
@@ -229,8 +229,8 @@ function PublicPreview() {
           <p className="serif text-[30px] leading-tight">{displayName(me)}</p>
           <p className="text-[14px] text-muted">
             {me.pronouns && <>{me.pronouns} · </>}
-            {me.level} · <span className="tabular">{me.sunlight.toLocaleString()}</span> Sunlight ·{" "}
-            <span className="tabular">{me.followers}</span> followers
+            {me.level} · <span className="tabular">{(me.sunlight ?? 0).toLocaleString()}</span>{" "}
+            Sunlight · <span className="tabular">{me.followers}</span> followers
           </p>
           {me.badges.length > 0 && (
             <div className="mt-2 flex gap-1.5">
@@ -1045,7 +1045,10 @@ function GroupsTab() {
                     {g.name}
                   </Link>
                   <p className="tabular truncate text-[13px] text-muted">
-                    {plural(g.members, "member")} · {plural(g.postsThisWeek, "post")} this week
+                    {plural(g.members, "member")}
+                    {g.postsThisWeek !== undefined && (
+                      <> · {plural(g.postsThisWeek, "post")} this week</>
+                    )}
                     {yours > 0 && <> · {plural(yours, "post")} from you</>}
                     {muted && " · Muted"}
                   </p>

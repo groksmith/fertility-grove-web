@@ -857,12 +857,14 @@ function Data({ s }: { s: State }) {
   const query = useQuery({
     queryKey: ["profile", "data-export"],
     queryFn: () => settingsService.exportStatus(),
+    // Only for a real session; the demo personas have no account to export.
+    enabled: s.session === "ready",
   });
   const [ask, setAsk] = useState(false);
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
-  const status = query.isPending ? null : s.dataExport;
+  const status = s.session === "ready" && query.isPending ? null : s.dataExport;
   return (
     <Section
       id="data"
@@ -1392,7 +1394,7 @@ export default function SettingsPage() {
       case "delete":
         return <DeleteAccount s={s} />;
       case "prototype":
-        return <PrototypeTools s={s} />;
+        return s.demo ? <PrototypeTools s={s} /> : <Account s={s} />;
       default:
         return <Account s={s} />;
     }
@@ -1424,9 +1426,12 @@ export default function SettingsPage() {
               </ul>
             </div>
           ))}
-          <ul className="mt-2 border-t border-line pt-3">
-            <NavRow item={proto} s={s} active={current === "prototype"} />
-          </ul>
+          {/* The prototype tools drive the offline demo; a real account has nothing for them. */}
+          {s.demo && (
+            <ul className="mt-2 border-t border-line pt-3">
+              <NavRow item={proto} s={s} active={current === "prototype"} />
+            </ul>
+          )}
         </nav>
         <div className={`min-w-0 ${current ? "" : "hidden lg:block"}`}>
           <a

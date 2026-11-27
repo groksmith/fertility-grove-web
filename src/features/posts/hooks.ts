@@ -5,6 +5,7 @@ import { upsert } from "@/lib/api/cache";
 import { withPosts, withThread } from "@/lib/api/content";
 import { apiPostType, contentStatus, minutesSince } from "@/lib/api/enums";
 import { useCachedPages, useCachedQuery } from "@/lib/api/query";
+import { isApiId } from "@/lib/api/samples";
 import { ApiRequestError } from "@/lib/http";
 import { set } from "@/lib/mock-server";
 import type { Comment, Post } from "@/types/domain";
@@ -77,7 +78,7 @@ export function useGroupPosts(groupId: string, sort: Sort = "newest", enabled = 
     queryKey: postKeys.group(groupId, sort),
     fetchPage: (page) => postsApi.groupPosts(groupId, SORT[sort], page),
     apply: (s, d) => withPosts(s, d.posts),
-    enabled: enabled && !!groupId,
+    enabled: enabled && !!groupId && isApiId(groupId),
   });
 }
 
@@ -100,7 +101,8 @@ export function usePost(id: string, sort: "top" | "newest" = "top") {
       }
     },
     apply: (s, d) => (d ? withThread(withPosts(s, [d.post]), d.post.id, d.comments) : s),
-    enabled: !!id && id !== "new",
+    // A sample post's id never goes to the API.
+    enabled: !!id && isApiId(id),
   });
 }
 

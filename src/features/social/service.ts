@@ -1,15 +1,19 @@
 import { loadSession } from "@/features/auth";
 import { refresh } from "@/lib/api/query-client";
 import { fail, failure, ok, type Result } from "@/lib/api/result";
-import { get, type State, set, uid } from "@/lib/mock-server";
+import { sampleOnly } from "@/lib/api/samples";
+import { demoResult, get, isDemo, type State, set, uid } from "@/lib/mock-server";
 import { notice } from "@/lib/notice";
 import { MSG } from "@/lib/rules/validation";
 import type { ReportReason } from "@/types/domain";
 import { socialApi } from "./api";
+import { demo } from "./demo";
 
 /* ---------------------------------------------------------------- Social */
 
 const memberOf = (id: string) => get().members.find((m) => m.id === id);
+/** A prototype sample member (lib/api/samples.ts): nothing about them goes to the API. */
+const isSample = (id: string) => !!memberOf(id)?.sample;
 const handleOf = (id: string) => memberOf(id)?.handle || id;
 
 /** Show a change now; put it back with a toast if the API refuses. */
@@ -38,6 +42,8 @@ async function optimistic(change: (s: State) => State, run: () => Promise<unknow
 export const socialService = {
   /** POST / DELETE /members/{handle}/follow. */
   toggleFollow(id: string): Promise<Result> {
+    if (isDemo()) return Promise.resolve(demoResult(demo.toggleFollow(id)));
+    if (isSample(id)) return Promise.resolve(sampleOnly("member"));
     const on = get().following.includes(id);
     return optimistic(
       (s) => ({
@@ -53,6 +59,7 @@ export const socialService = {
   },
   /** DELETE /profile/me/followers/{handle}. */
   removeFollower(id: string): Promise<Result> {
+    if (isDemo()) return Promise.resolve(demoResult(demo.removeFollower(id)));
     return optimistic(
       (s) => ({ ...s, followers: s.followers.filter((x) => x !== id) }),
       () => socialApi.removeFollower(handleOf(id)),
@@ -60,6 +67,8 @@ export const socialService = {
   },
   /** POST /members/{handle}/block: follows end both ways, mentoring ends, and so does a partner link. */
   block(id: string): Promise<Result> {
+    if (isDemo()) return Promise.resolve(demoResult(demo.block(id)));
+    if (isSample(id)) return Promise.resolve(sampleOnly("member"));
     return optimistic(
       (s) => ({
         ...s,
@@ -82,6 +91,7 @@ export const socialService = {
   },
   /** DELETE /profile/me/blocked/{memberId}. */
   unblock(id: string): Promise<Result> {
+    if (isDemo()) return Promise.resolve(demoResult(demo.unblock(id)));
     const apiId = memberOf(id)?.apiId;
     return optimistic(
       (s) => ({ ...s, blocked: s.blocked.filter((x) => x !== id) }),
@@ -90,6 +100,7 @@ export const socialService = {
   },
   /** POST /matches/Peer/{memberId}/not-for-me. */
   notForMe(id: string): Promise<Result> {
+    if (isDemo()) return Promise.resolve(demoResult(demo.notForMe(id)));
     const apiId = memberOf(id)?.apiId;
     return optimistic(
       (s) => ({
@@ -103,6 +114,7 @@ export const socialService = {
   },
   /** Reports: TODO(api) — no reporting endpoint yet (moderation, M4). Kept locally. */
   report(target: string, reason: ReportReason | "", details: string, alsoBlock?: string): Result {
+    if (isDemo()) return demoResult(demo.report(target, reason, details, alsoBlock));
     const s = get();
     if (!reason) return fail("Choose a reason.");
     if (reason === "Other" && !details.trim()) return fail(MSG.reportDetails);

@@ -109,6 +109,8 @@ export interface Me {
 
 export interface State {
   persona: "new" | "member" | "partner" | "mentor";
+  /** The offline demo (a /demo persona): everything runs on this store, no API. */
+  demo?: boolean;
   /** The API session: "none" signed out, "loading" while `me` is fetched, "ready" once filled. */
   session: "none" | "loading" | "ready";
   /** Filled from the API: the member must accept this Terms version before anything else. */
@@ -341,17 +343,19 @@ function base(): Omit<State, "persona" | "me"> {
 }
 
 export function persona(kind: State["persona"]): State {
-  if (kind === "new") return { ...base(), persona: "new", me: EMPTY_ME };
+  // The prototype's library, as the demo personas read it.
+  const demo = { ...base(), demo: true, articles: ARTICLES };
+  if (kind === "new") return { ...demo, persona: "new", me: EMPTY_ME };
   if (kind === "partner") {
     return {
-      ...base(),
+      ...demo,
       persona: "partner",
       me: EMPTY_ME,
       invitedBy: "Annie",
     };
   }
   const established: State = {
-    ...base(),
+    ...demo,
     persona: kind,
     signedIn: true,
     step: 9,
@@ -415,6 +419,8 @@ export function signedOut(): State {
   return {
     ...sample,
     persona: "new",
+    demo: false,
+    articles: [],
     session: "none",
     signedIn: false,
     step: 1,
@@ -466,6 +472,9 @@ export function get(): State {
   ensureLoaded();
   return current;
 }
+
+/** The offline demo is running (a /demo persona): services stay on this store, no API. */
+export const isDemo = () => get().demo === true;
 
 export function set(fn: (s: State) => State) {
   ensureLoaded();

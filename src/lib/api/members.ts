@@ -135,7 +135,7 @@ export function memberFromRef(ref: MemberRef): Member {
     pronouns: ref.pronouns || undefined,
     avatarHue: (ref.isMe ? rememberedHue() : undefined) ?? avatar.hue ?? "green",
     avatar: avatar.preset,
-    sunlight: 0,
+    sunlight: undefined,
     level: treeLevel(ref.treeLevel),
     badges: badgesOf(ref.badge),
     community: "womens",

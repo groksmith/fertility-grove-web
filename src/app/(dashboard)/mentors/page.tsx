@@ -150,16 +150,19 @@ function MentorCard({ mentor, why }: { mentor: Member; why: string }) {
         </div>
       </div>
       <p className="mt-4 text-[15px] leading-relaxed text-ink">{m.bio}</p>
-      <div className="mt-4 flex flex-wrap gap-1.5">
-        {m.helpsWith.map((h) => (
-          <span
-            key={h}
-            className="inline-flex h-7 items-center rounded-full bg-raised px-3 text-[13px] font-semibold text-ink-soft"
-          >
-            {h}
-          </span>
-        ))}
-      </div>
+      {/* TODO(api): mentor matches don't send what they help with; shown once a profile has. */}
+      {m.helpsWith.length > 0 && (
+        <div className="mt-4 flex flex-wrap gap-1.5">
+          {m.helpsWith.map((h) => (
+            <span
+              key={h}
+              className="inline-flex h-7 items-center rounded-full bg-raised px-3 text-[13px] font-semibold text-ink-soft"
+            >
+              {h}
+            </span>
+          ))}
+        </div>
+      )}
       <div className="mt-auto flex flex-wrap items-center gap-3 pt-5">
         {existing ? (
           <span
@@ -170,7 +173,9 @@ function MentorCard({ mentor, why }: { mentor: Member; why: string }) {
         ) : room > 0 ? (
           <>
             <Button onClick={() => setOpen(true)}>Request mentoring</Button>
-            <span className="tabular text-[13px] text-muted">Room for {room} more</span>
+            {!m.placesUnknown && (
+              <span className="tabular text-[13px] text-muted">Room for {room} more</span>
+            )}
           </>
         ) : (
           <span className="text-[14px] text-muted">Not taking requests right now</span>

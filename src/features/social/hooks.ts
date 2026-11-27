@@ -4,7 +4,7 @@ import { badgesOf, memberFromRef, mergeMembers } from "@/lib/api/members";
 import { labelsOf, pronounsText } from "@/lib/api/options";
 import { useCachedQuery } from "@/lib/api/query";
 import { ApiRequestError } from "@/lib/http";
-import type { State } from "@/lib/mock-server";
+import { type State, useStore } from "@/lib/mock-server";
 import type { Member } from "@/types/domain";
 import { type MemberProfileDto, socialApi } from "./api";
 
@@ -50,6 +50,7 @@ function withProfile(s: State, d: MemberProfileDto): State {
           activeMentees: d.mentor.isTakingRequests ? 0 : 1,
           waiting: 0,
           paused: !d.mentor.isTakingRequests,
+          placesUnknown: true,
         }
       : undefined,
   };
@@ -62,6 +63,8 @@ function withProfile(s: State, d: MemberProfileDto): State {
 
 /** GET /members/{handle}. A profile that isn't available marks the member unavailable. */
 export function useMember(handle: string) {
+  // A prototype sample member's handle never goes to the API.
+  const sample = useStore((s) => s.members.some((m) => m.handle === handle && m.sample));
   return useCachedQuery({
     queryKey: socialKeys.member(handle),
     queryFn: async () => {
@@ -81,7 +84,7 @@ export function useMember(handle: string) {
               m.handle === handle ? { ...m, unavailable: "deleting" as const } : m,
             ),
           },
-    enabled: !!handle,
+    enabled: !!handle && !sample,
   });
 }
 

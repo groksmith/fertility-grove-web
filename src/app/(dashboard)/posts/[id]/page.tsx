@@ -11,6 +11,7 @@ import { ReportDialog, useResult } from "@/components/common/Safety";
 import {
   Avatar,
   EmptyState,
+  SampleTag,
   SourceLabel,
   TagChip,
   TypeChip,
@@ -293,6 +294,7 @@ export default function PostPage() {
                 <>
                   <div className="mt-5 flex flex-wrap gap-1.5">
                     <TypeChip type={post.type} />
+                    {post.sample && <SampleTag />}
                     {clinicianAnswered && (
                       <span className="inline-flex h-6 items-center gap-1 rounded-full bg-blue-tint px-2.5 text-[12px] font-semibold text-blue-ink">
                         <BadgeCheck size={13} /> Clinician answered

@@ -13,7 +13,14 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Name } from "@/components/common/Person";
-import { Avatar, FormField, SourceLabel, TypeChip, VoteControl } from "@/components/shared";
+import {
+  Avatar,
+  FormField,
+  SampleTag,
+  SourceLabel,
+  TypeChip,
+  VoteControl,
+} from "@/components/shared";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Panel } from "@/components/ui/panel";
@@ -146,6 +153,7 @@ export function PublicPostCard({
       <Link href={`/p/${post.id}`} className="group mt-4 block">
         <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1.5">
           <TypeChip type={post.type} />
+          {post.sample && <SampleTag />}
           {showGroup && <span className="text-[13px] text-muted">{group.name}</span>}
         </div>
         <h2 className="text-[18px] leading-snug font-semibold text-ink group-hover:underline">

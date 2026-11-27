@@ -9,5 +9,6 @@ export { FormField, type FormFieldProps } from "./FormField";
 export { MoreOnScroll } from "./MoreOnScroll";
 export { PageHeader } from "./PageHeader";
 export { SourceLabel, TagChip, TypeChip } from "./PostChips";
+export { SampleTag } from "./SampleTag";
 export { useUnsavedGuard } from "./UnsavedGuard";
 export { VoteControl } from "./VoteControl";

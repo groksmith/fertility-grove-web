@@ -9,7 +9,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Name } from "@/components/common/Person";
-import { Avatar, SourceLabel, TagChip, TypeChip, VoteControl } from "@/components/shared";
+import {
+  Avatar,
+  SampleTag,
+  SourceLabel,
+  TagChip,
+  TypeChip,
+  VoteControl,
+} from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Menu } from "@/components/ui/dropdown-menu";
 import { Panel } from "@/components/ui/panel";
@@ -193,6 +200,7 @@ export function PostCard({
         <Link href={`/posts/${post.id}`} className="group mt-4 block">
           <div className="mb-2 flex flex-wrap gap-1.5">
             <TypeChip type={post.type} />
+            {post.sample && <SampleTag />}
             {post.tags.slice(0, 3).map((t) => (
               <TagChip key={t}>{t}</TagChip>
             ))}

@@ -181,9 +181,9 @@ export function CommentItem({
             <div className="flex gap-2">
               <Button
                 size="sm"
-                onClick={() => {
-                  postService.editComment(c.id, draft.trim());
-                  setEditing(false);
+                onClick={async () => {
+                  // The editor stays open until the API answers, so a refused edit can be fixed.
+                  if (await handle(postService.editComment(c.id, draft.trim()))) setEditing(false);
                 }}
                 disabled={!draft.trim()}
               >
@@ -241,7 +241,7 @@ export function CommentItem({
                     {
                       label: "Delete",
                       danger: true,
-                      onSelect: () => postService.removeComment(c.id),
+                      onSelect: () => handle(postService.removeComment(c.id)),
                     },
                   ]
                 : [

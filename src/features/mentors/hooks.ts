@@ -72,13 +72,17 @@ export function useMentorMatches(enabled = true) {
           return {
             ...m,
             badges: badgesOf(match.badge),
+            // Matches only list mentors taking requests, with no count of places or topics;
+            // what the mentor's profile told us (GET /members/{handle}) is kept.
             mentor: {
-              bio: match.bio ?? "",
-              helpsWith: m.mentor?.helpsWith ?? [],
               capacity: 1,
               activeMentees: 0,
               waiting: 0,
               paused: false,
+              placesUnknown: true,
+              ...m.mentor,
+              bio: match.bio ?? m.mentor?.bio ?? "",
+              helpsWith: m.mentor?.helpsWith ?? [],
             },
           };
         }),

@@ -3,9 +3,11 @@
 
 import { refresh } from "@/lib/api/query-client";
 import { failure, ok, type Result } from "@/lib/api/result";
-import { get, set } from "@/lib/mock-server";
+import { isApiId, sampleOnly } from "@/lib/api/samples";
+import { demoResult, get, isDemo, set } from "@/lib/mock-server";
 import { notice } from "@/lib/notice";
 import { groupsApi } from "./api";
+import { demo } from "./demo";
 
 function setJoined(id: string, joined: boolean) {
   set((s) => {
@@ -38,6 +40,8 @@ async function undoOnFail(run: () => Promise<unknown>, undo: () => void): Promis
 export const groupService = {
   /** POST / DELETE /groups/{id}/membership. */
   toggleJoin(id: string): Promise<Result> {
+    if (isDemo()) return Promise.resolve(demoResult(demo.toggleJoin(id)));
+    if (!isApiId(id)) return Promise.resolve(sampleOnly("group"));
     const joined = get().joined.includes(id);
     setJoined(id, !joined);
     return undoOnFail(
@@ -47,6 +51,8 @@ export const groupService = {
   },
   /** PUT /groups/{id}/membership/muted. */
   toggleMute(id: string): Promise<Result> {
+    if (isDemo()) return Promise.resolve(demoResult(demo.toggleMute(id)));
+    if (!isApiId(id)) return Promise.resolve(sampleOnly("group"));
     const muted = get().muted.includes(id);
     const apply = (value: boolean) =>
       set((s) => ({
@@ -61,6 +67,8 @@ export const groupService = {
   },
   /** POST /matches/Group/{id}/not-for-me: never suggested again. */
   notForMe(id: string): Promise<Result> {
+    if (isDemo()) return Promise.resolve(demoResult(demo.notForMe(id)));
+    if (!isApiId(id)) return Promise.resolve(sampleOnly("group"));
     set((s) => ({
       ...s,
       notForMe: [...s.notForMe, id],

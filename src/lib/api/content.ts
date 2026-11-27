@@ -193,7 +193,7 @@ export function toGroup(g: GroupDto, had?: Group): Group {
     status: g.isArchived ? "archived" : "active",
     visibleToGuests: g.visibleToGuests ?? had?.visibleToGuests ?? false,
     members: g.memberCount ?? had?.members ?? 0,
-    postsThisWeek: g.postsThisWeek ?? had?.postsThisWeek ?? 0,
+    postsThisWeek: g.postsThisWeek ?? had?.postsThisWeek,
     posterAvatars:
       g.posterAvatars?.map((a) => {
         const { hue, preset } = decodeAvatar(a.avatarCode);

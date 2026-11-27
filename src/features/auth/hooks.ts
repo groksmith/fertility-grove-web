@@ -29,12 +29,25 @@ export function useSessionSync() {
 /** GET /auth/sign-up-status for the invite this browser arrived with (PRD §24 beta). */
 export function useSignUpStatus() {
   const invite = useStore((s) => s.pendingInvite);
+  // The offline demo answers from its Prototype tools (Sign-ups paused, Has a beta invite).
+  const demo = useStore((s) => s.demo === true);
+  const demoPaused = useStore((s) => s.signupsPaused);
+  const demoInvite = useStore((s) => s.hasInvite);
   const query = useQuery({
     queryKey: ["auth", "sign-up-status", invite?.code ?? "", invite?.partnerToken ?? ""],
     queryFn: () =>
       authApi.signUpStatus({ inviteCode: invite?.code, partnerInviteToken: invite?.partnerToken }),
     staleTime: 60_000,
+    enabled: !demo,
   });
+  if (demo) {
+    return {
+      loading: false,
+      isPaused: demoPaused,
+      isInviteOnly: true,
+      hasInvite: !demoPaused && demoInvite,
+    };
+  }
   const status = query.data;
   return {
     loading: query.isPending,

@@ -9,12 +9,20 @@ import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { GroupCover } from "@/components/art/Brand";
-import { EmptyState } from "@/components/shared";
+import { EmptyState, SampleTag } from "@/components/shared";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { toast } from "@/components/ui/toast";
-import { groupService } from "@/features/groups";
-import { articleCover, DISCLAIMER, learnService, sectionId, useArticle } from "@/features/learn";
+import { groupService, useGroups } from "@/features/groups";
+import {
+  articleCover,
+  DISCLAIMER,
+  learnService,
+  sampleArticle,
+  sectionId,
+  useArticle,
+} from "@/features/learn";
+import { isApiId } from "@/lib/api/samples";
 import { hueInk } from "@/lib/hue";
 import { useStore } from "@/lib/mock-server";
 
@@ -22,13 +30,18 @@ export default function ArticlePage() {
   const { slug } = useParams<{ slug: string }>();
   // GET /learn/articles/{id}, into the cache this page reads.
   const query = useArticle(slug);
-  const a = useStore((s) => s.articles.find((x) => x.slug === slug && x.sections.length > 0));
+  // Related groups arrive as ids; GET /groups gives their covers and names.
+  useGroups();
+  // A link to a sample (from the sample library or a Guide citation) opens the sample itself.
+  const a =
+    useStore((s) => s.articles.find((x) => x.slug === slug && x.sections.length > 0)) ??
+    sampleArticle(slug);
   const saved = useStore((s) => s.savedArticles.includes(slug));
   const helpful = useStore((s) => s.articleHelpful[slug]);
   const groups = useStore((s) => s.groups);
   const joined = useStore((s) => s.joined);
 
-  if (!a && query.isPending) return null;
+  if (!a && isApiId(slug) && query.isPending) return null;
   if (!a) {
     return (
       <EmptyState
@@ -66,6 +79,7 @@ export default function ArticlePage() {
                 <h1 className="serif mt-2 text-[36px] leading-[1.05] text-ink sm:text-[44px]">
                   {a.title}
                 </h1>
+                {a.sample && <SampleTag className="mt-3" />}
               </div>
               <span
                 aria-hidden
@@ -89,7 +103,9 @@ export default function ArticlePage() {
                 Reviewed by {a.reviewedBy}
               </p>
               <p className="mt-1 text-[14px] text-muted">
-                Last reviewed {a.lastReviewed} · Next review due {a.nextReview}
+                Last reviewed {a.lastReviewed}
+                {/* TODO(api): articles have no next review date yet. */}
+                {a.nextReview && <> · Next review due {a.nextReview}</>}
               </p>
 
               <div className="mt-8 max-w-[66ch] space-y-8">
@@ -182,6 +198,10 @@ export default function ArticlePage() {
             <Button
               variant={saved ? "quiet" : "secondary"}
               onClick={() => {
+                if (a.sample) {
+                  learnService.toggleSave(slug);
+                  return;
+                }
                 learnService.toggleSave(slug);
                 toast(saved ? "Removed from saved" : "Saved for your next appointment");
               }}

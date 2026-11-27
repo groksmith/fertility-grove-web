@@ -25,6 +25,18 @@ support inbox — stays on the local store in `src/lib/mock-server/` (marked `TO
 `docs/backend-tasks.md` B9). That store is also the **client cache**: queries map API answers into
 its collections, so the approved screens and their selectors read the same shapes as before.
 
+Three rules keep the approved prototype UI visible while the backend fills in:
+- **Samples while empty** (`src/lib/api/samples.ts`, B20): when an unfiltered catalogue list
+  (Learn articles, groups, success stories, the public feed) answers empty, the prototype's seed
+  items stand in, marked `sample: true`, tagged "Sample" (`SampleTag`) and **read-only**. Services
+  answer `sampleOnly(kind)` for them, and their slugs never go to the API (`isApiId`). Real items
+  replace them.
+- **Hide, don't fake:** a piece the API doesn't send yet (Sunlight of others, "Who it's for", next
+  review date…) is hidden, never shown blank or as 0, and gets a `B<n>`.
+- **Offline demo:** a `/demo` persona sets `State.demo`. Every service then routes to its feature's
+  `demo.ts` (the prototype's local behaviour) via `isDemo()`, selectors match locally, and no
+  member-only request is made. Signing out leaves the demo; a real sign-in always uses the API.
+
 ### Stack baseline (Nov 2026) — verify against package.json
 
 | Area | Packages |

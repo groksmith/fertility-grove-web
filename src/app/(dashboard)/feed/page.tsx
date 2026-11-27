@@ -21,7 +21,8 @@ import { Tabs } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/toast";
 import { POST_TYPES } from "@/config/options";
 import { displayName, meAsMember } from "@/features/auth";
-import { groupMatches, groupService, useGroupMatches } from "@/features/groups";
+import { groupMatches, groupService, useGroupMatches, useGroups } from "@/features/groups";
+import { useNotifications } from "@/features/notifications";
 import { feed, useFeed, useFollowingFeed } from "@/features/posts";
 import { profileCompletion, settingsService } from "@/features/settings";
 import { peopleMatches, socialService, usePeerMatches } from "@/features/social";
@@ -33,7 +34,8 @@ type Sort = "newest" | "top" | "discussed";
 function finding(s: State) {
   const replies = s.notifications.filter((n) => !n.read && n.kind === "reply").length;
   const dms = s.conversations.filter((c) => c.unread && !c.request).length;
-  const requests = s.conversations.filter((c) => c.request === "incoming").length;
+  const requests =
+    s.conversationRequests ?? s.conversations.filter((c) => c.request === "incoming").length;
   const parts = [
     replies && `${replies} new ${replies === 1 ? "reply" : "replies"} on your posts`,
     dms && `${dms} unread ${dms === 1 ? "message" : "messages"}`,
@@ -284,6 +286,9 @@ export default function HomePage() {
   const forYou = useFeed(sort, { groups, types });
   const following = useFollowingFeed(tab === "following");
   useGroupMatches("HomeFeed");
+  // The header line counts unread replies (GET /notifications); the filter names joined groups.
+  useNotifications();
+  useGroups();
 
   const items = feed(s, { tab, sort, groups, types });
   const joinedGroups = s.groups.filter((g) => s.joined.includes(g.id));

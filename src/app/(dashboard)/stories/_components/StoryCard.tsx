@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Name } from "@/components/common/Person";
 import { ReportDialog, useResult } from "@/components/common/Safety";
-import { SourceLabel, TagChip, TypeChip } from "@/components/shared";
+import { SampleTag, SourceLabel, TagChip, TypeChip } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Menu } from "@/components/ui/dropdown-menu";
@@ -88,6 +88,7 @@ export function StoryCard({ story, detail = false }: { story: Story; detail?: bo
       </header>
       <div className="mt-3 flex flex-wrap gap-1.5">
         <TypeChip type={story.type} />
+        {story.sample && <SampleTag />}
         {story.diagnoses.map((d) => (
           <TagChip key={d}>{d}</TagChip>
         ))}

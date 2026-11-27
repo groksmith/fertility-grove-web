@@ -209,7 +209,7 @@ function AccountMenu() {
               </span>
               <span className="flex items-center gap-1 text-[12.5px] text-muted">
                 <TreeGlyph level={me.level} size={14} />
-                {me.level} · <span className="tabular">{me.sunlight.toLocaleString()}</span>{" "}
+                {me.level} · <span className="tabular">{(me.sunlight ?? 0).toLocaleString()}</span>{" "}
                 Sunlight
               </span>
             </span>
@@ -251,7 +251,8 @@ function MeRow({ onNavigate }: { onNavigate?: () => void }) {
         <span className="block truncate text-[14px] font-semibold text-ink">{displayName(me)}</span>
         <span className="flex items-center gap-1 text-[12.5px] text-muted">
           <TreeGlyph level={me.level} size={14} />
-          {me.level} · <span className="tabular">{me.sunlight.toLocaleString()}</span> Sunlight
+          {me.level} · <span className="tabular">{(me.sunlight ?? 0).toLocaleString()}</span>{" "}
+          Sunlight
         </span>
       </span>
     </Link>

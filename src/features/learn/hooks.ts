@@ -1,11 +1,14 @@
 /* Articles into the cache the Learn, Saved and group screens read. */
 
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ArticleCardDto, toArticle } from "@/lib/api/articles";
 import { codeOf } from "@/lib/api/options";
 import { useCachedPages, useCachedQuery } from "@/lib/api/query";
+import { isApiId, withSamples } from "@/lib/api/samples";
 import { ApiRequestError } from "@/lib/http";
 import type { State } from "@/lib/mock-server";
+import { ARTICLES as SAMPLE_ARTICLES } from "@/lib/mock-server/seed/articles";
+import type { Article } from "@/types/domain";
 import { type ArticleFilters, learnApi } from "./api";
 
 export const learnKeys = {
@@ -40,8 +43,26 @@ export function useArticles(filters: { search?: string; diagnosis?: string; topi
   return useCachedPages({
     queryKey: learnKeys.list(f),
     fetchPage: (page) => learnApi.list(page, f),
-    apply: (s, d) => withCards(s, d.articles),
+    apply: (s, d, page) => {
+      const next = withCards(s, d.articles);
+      // The whole library answered empty: show the prototype's articles until it has some.
+      const whole = !f.search && !f.diagnosis && !f.topic && page === 1;
+      return whole
+        ? {
+            ...next,
+            articles: withSamples(next.articles, d.totalCount > 0, SAMPLE_ARTICLES, (a) => a.slug),
+          }
+        : next;
+    },
   });
+}
+
+/** A prototype sample article by its slug, for links to one (the Guide's citations, samples in
+    the library) while the API has none. Undefined for an API id. */
+export function sampleArticle(slug: string): Article | undefined {
+  if (isApiId(slug)) return undefined;
+  const a = SAMPLE_ARTICLES.find((x) => x.slug === slug);
+  return a && { ...a, sample: true };
 }
 
 /** GET /learn/recommended: up to 6, each with its reason. */
@@ -84,7 +105,8 @@ export function useArticle(id: string) {
         articleHelpful: helpful,
       };
     },
-    enabled: !!id,
+    // A sample's slug never goes to the API.
+    enabled: !!id && isApiId(id),
   });
 }
 
@@ -119,16 +141,28 @@ export function useSavedArticles() {
 /** GET /learn/articles without signing in (PRD §16: guests see Learn home), page by page. */
 export function usePublicArticles(search = "") {
   const q = search.trim();
+  const client = useQueryClient();
   return useInfiniteQuery({
     queryKey: ["public", "learn", q],
     initialPageParam: 1,
     queryFn: ({ pageParam }) => learnApi.list(pageParam, { search: q || undefined }, true),
     getNextPageParam: (last) =>
       last.page * last.pageSize < last.totalCount ? last.page + 1 : undefined,
-    select: (data) => ({
-      ...data,
-      articles: data.pages.flatMap((p) => p.articles.map((a) => toArticle(a))),
-    }),
+    select: (data) => {
+      const articles = data.pages.flatMap((p) => p.articles.map((a) => toArticle(a)));
+      // An empty library shows the prototype's articles (searched here) until it has some.
+      const whole = q
+        ? client.getQueryData<typeof data>(["public", "learn", ""])?.pages[0]
+        : data.pages[0];
+      if (articles.length || whole?.totalCount !== 0) return { ...data, articles };
+      const needle = q.toLowerCase();
+      return {
+        ...data,
+        articles: withSamples([] as Article[], false, SAMPLE_ARTICLES, (a) => a.slug).filter(
+          (a) => !needle || `${a.title} ${a.summary}`.toLowerCase().includes(needle),
+        ),
+      };
+    },
   });
 }
 
@@ -137,6 +171,9 @@ export function usePublicArticle(id: string) {
   return useQuery({
     queryKey: ["public", "learn", "article", id],
     queryFn: async () => {
+      // A sample's slug never goes to the API: visitors see its title and summary.
+      const sample = sampleArticle(id);
+      if (sample) return { article: sample, joinMessage: null };
       try {
         const a = await learnApi.article(id, true);
         return { article: toArticle(a), joinMessage: a.joinMessage };

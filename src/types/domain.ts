@@ -16,6 +16,8 @@ export type Badge = "mentor" | "founding-mentor" | "clinician" | "team" | "partn
 
 /** Someone other than the signed-in member. */
 export interface Member {
+  /** Prototype sample shown while the API has none (lib/api/samples.ts); read-only. */
+  sample?: true;
   /** The handle (the API names members by handle); "me" for the signed-in member. */
   id: string;
   /** The API's member id, where one was sent (unblock takes it). */
@@ -28,7 +30,8 @@ export interface Member {
   avatarHue: Hue;
   /** A grove avatar (index into AVATARS); unset shows one chosen from the id. */
   avatar?: number;
-  sunlight: number;
+  /** Undefined when the API doesn't say (other members' profiles and lists don't, yet). */
+  sunlight?: number;
   level: TreeLevel;
   badges: Badge[];
   community: CommunityId;
@@ -64,11 +67,15 @@ export interface MentorProfile {
   activeMentees: number;
   waiting: number;
   paused: boolean;
+  /** True when the API only says whether they take requests, not how many places are left. */
+  placesUnknown?: boolean;
 }
 
 export type GroupType = "Diagnosis" | "Stage" | "Topic";
 
 export interface Group {
+  /** Prototype sample shown while the API has none (lib/api/samples.ts); read-only. */
+  sample?: true;
   id: string;
   name: string;
   description: string;
@@ -83,7 +90,8 @@ export interface Group {
   visibleToGuests: boolean;
   community: CommunityId | "both";
   members: number;
-  postsThisWeek: number;
+  /** Undefined when the answer didn't say (the groups list has no count). */
+  postsThisWeek?: number;
   /** Up to 5 recent posters' avatars, decoration only (GET /groups/{id}). */
   posterAvatars?: { hue: Hue; preset?: number }[];
   /** "From the library" links (GET /groups/{id}). */
@@ -138,6 +146,8 @@ export interface Comment {
 }
 
 export interface Post {
+  /** Prototype sample shown while the API has none (lib/api/samples.ts); read-only. */
+  sample?: true;
   id: string;
   groupId: string;
   authorId: string;
@@ -167,6 +177,8 @@ export interface Post {
 }
 
 export interface Story {
+  /** Prototype sample shown while the API has none (lib/api/samples.ts); read-only. */
+  sample?: true;
   id: string;
   authorId: string;
   type: StoryType;
@@ -183,6 +195,8 @@ export interface Story {
 }
 
 export interface Article {
+  /** Prototype sample shown while the API has none (lib/api/samples.ts); read-only. */
+  sample?: true;
   slug: string;
   title: string;
   summary: string;

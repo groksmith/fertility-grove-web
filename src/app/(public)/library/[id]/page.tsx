@@ -9,7 +9,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ReadingFrame } from "@/components/common/AuthFrame";
 import { JoinBlock } from "@/components/common/Guest";
-import { EmptyState } from "@/components/shared";
+import { EmptyState, SampleTag } from "@/components/shared";
 import { LinkButton } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { articleCover, usePublicArticle } from "@/features/learn";
@@ -53,8 +53,11 @@ export default function LibraryArticlePage() {
             className="object-cover"
           />
         </span>
-        {a.lastReviewed && (
-          <p className="px-6 py-4 text-[14px] text-muted">Clinician-reviewed · {a.lastReviewed}</p>
+        {(a.lastReviewed || a.sample) && (
+          <p className="flex items-center gap-2 px-6 py-4 text-[14px] text-muted">
+            {a.sample && <SampleTag />}
+            {a.lastReviewed && <>Clinician-reviewed · {a.lastReviewed}</>}
+          </p>
         )}
       </Panel>
       <JoinBlock title="Join free to read the full article">

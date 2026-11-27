@@ -42,7 +42,11 @@ export function Name({
         )}
         {!team && (
           <span
-            title={`${member.level} · ${member.sunlight.toLocaleString()} Sunlight`}
+            title={
+              member.sunlight === undefined
+                ? member.level
+                : `${member.level} · ${member.sunlight.toLocaleString()} Sunlight`
+            }
             className="inline-flex shrink-0"
           >
             <TreeGlyph level={member.level} />

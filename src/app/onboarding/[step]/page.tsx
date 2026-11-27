@@ -18,7 +18,7 @@ import { Name, Person } from "@/components/common/Person";
 import { ReferFriend } from "@/components/common/ReferFriend";
 import { useSignOut } from "@/components/common/SignOut";
 import { Logo } from "@/components/icons/Logo";
-import { Avatar, AvatarPicker, FormField, HueSwatches } from "@/components/shared";
+import { Avatar, AvatarPicker, FormField, HueSwatches, SampleTag } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Choices } from "@/components/ui/choices";
 import { Field } from "@/components/ui/field";
@@ -42,7 +42,7 @@ import {
 import { journey, meAsMember } from "@/features/auth";
 import { groupMatches, groupService, useGroupMatches } from "@/features/groups";
 import { GUIDE_STARTERS } from "@/features/guide";
-import { learnService, useRecommendedArticles } from "@/features/learn";
+import { learnService, useArticles, useRecommendedArticles } from "@/features/learn";
 import { mentorMatches, useMentorMatches } from "@/features/mentors";
 import {
   ONBOARDING_STEP_FIELDS,
@@ -907,20 +907,25 @@ function Step7({ form }: StepProps) {
 
 function Step8({ finish, preview }: { finish: (to: string) => void; preview: boolean }) {
   const s = useStore();
-  // Matches open once onboarding is complete, which this screen does as it opens.
-  const complete = s.step >= 9 && !preview;
+  // Matches open once onboarding is complete, which this screen does as it opens. A preview by a
+  // member who has finished shows their real matches; the offline demo works them out itself.
+  const complete = s.step >= 9;
   useGroupMatches("Onboarding", complete);
   usePeerMatches(complete);
   useMentorMatches(complete && s.me.wantMentor);
   useRecommendedArticles(complete);
+  // The library's first page, to fill "Read first" (and its samples while the library is empty).
+  useArticles();
   const groups = groupMatches(s, 5);
   const people = peopleMatches(s, 3);
   const mentors = s.me.wantMentor ? mentorMatches(s, 3) : [];
   const j = journey(s);
   // GET /learn/recommended (personal when health answers allow), else the library's first.
-  const recommended = (s.recommendedArticles ?? []).flatMap((r) =>
-    s.articles.filter((a) => a.slug === r.slug),
-  );
+  // Samples are matched on the diagnosis here, as the prototype did.
+  const recommended =
+    s.demo || s.articles.some((a) => a.sample)
+      ? s.articles.filter((a) => a.diagnoses.some((d) => j.diagnoses.includes(d)))
+      : (s.recommendedArticles ?? []).flatMap((r) => s.articles.filter((a) => a.slug === r.slug));
   const articles = recommended
     .concat(s.articles)
     .filter((a, i, all) => all.indexOf(a) === i)
@@ -1051,7 +1056,10 @@ function Step8({ finish, preview }: { finish: (to: string) => void; preview: boo
             return (
               <li key={a.slug} className="flex items-start gap-3">
                 <div className="min-w-0 flex-1">
-                  <p className="text-[15px] font-semibold">{a.title}</p>
+                  <p className="flex items-center gap-2 text-[15px] font-semibold">
+                    {a.title}
+                    {a.sample && <SampleTag />}
+                  </p>
                   <p className="mt-0.5 line-clamp-2 text-[13px] leading-snug text-muted">
                     {j.diagnoses.some((d) => a.diagnoses.includes(d))
                       ? `Matched on ${a.diagnosis.toLowerCase()}. `

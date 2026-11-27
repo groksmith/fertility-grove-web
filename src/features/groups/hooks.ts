@@ -3,6 +3,7 @@
 import { merge } from "@/lib/api/cache";
 import { toGroup, withGroups } from "@/lib/api/content";
 import { useCachedQuery } from "@/lib/api/query";
+import { isApiId, withSampleGroups } from "@/lib/api/samples";
 import { ApiRequestError } from "@/lib/http";
 import { groupsApi, type Placement } from "./api";
 
@@ -14,11 +15,13 @@ export const groupKeys = {
 };
 
 /** GET /groups: every group, with joined and muted. */
-export function useGroups() {
+export function useGroups(enabled = true) {
   return useCachedQuery({
     queryKey: groupKeys.list,
     queryFn: () => groupsApi.list(),
-    apply: (s, d) => withGroups(s, d.groups),
+    // No groups yet: the prototype's sample groups (with their posts) stand in until there are.
+    apply: (s, d) => withSampleGroups(withGroups(s, d.groups), d.groups.length > 0),
+    enabled,
   });
 }
 
@@ -35,7 +38,8 @@ export function useGroup(id: string) {
       }
     },
     apply: (s, d) => (d ? withGroups(s, [d]) : s),
-    enabled: !!id,
+    // A sample group's id never goes to the API.
+    enabled: !!id && isApiId(id),
   });
 }
 

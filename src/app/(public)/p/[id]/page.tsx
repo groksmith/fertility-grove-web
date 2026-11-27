@@ -12,7 +12,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ReadingFrame } from "@/components/common/AuthFrame";
 import { JoinBlock, PublicByline, useGuestAction } from "@/components/common/Guest";
-import { EmptyState, SourceLabel, TypeChip, VoteControl } from "@/components/shared";
+import { EmptyState, SampleTag, SourceLabel, TypeChip, VoteControl } from "@/components/shared";
 import { LinkButton } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { allowsDownvote, usePublicPost } from "@/features/posts";
@@ -50,6 +50,7 @@ export default function PublicPostPage() {
         <PublicByline item={item} ask={ask} size={44} />
         <div className="mt-5 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[14px]">
           <TypeChip type={post.type} />
+          {post.sample && <SampleTag />}
           <span className="text-muted">
             {groupOpenToGuests(group) ? (
               <Link href={`/community/${group.id}`} className="hover:text-ink hover:underline">

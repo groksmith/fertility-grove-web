@@ -53,7 +53,7 @@ export function matchGroups(j: Journey, groups: Group[], hidden: string[] = [], 
   }
   // No answers: popular groups, by activity.
   return scored
-    .sort((a, b) => b.group.postsThisWeek - a.group.postsThisWeek)
+    .sort((a, b) => (b.group.postsThisWeek ?? 0) - (a.group.postsThisWeek ?? 0))
     .slice(0, limit)
     .map((s) => ({ group: s.group, why: "Popular in the grove" }));
 }

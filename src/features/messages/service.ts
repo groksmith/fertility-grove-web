@@ -1,11 +1,12 @@
 import { refresh } from "@/lib/api/query-client";
 import { crisisOf, fail, failure, ok, type Result } from "@/lib/api/result";
-import { get, set, uid } from "@/lib/mock-server";
+import { demoResult, get, isDemo, set, uid } from "@/lib/mock-server";
 import { notice } from "@/lib/notice";
 import { detectCrisis } from "@/lib/rules/crisis";
 import { MSG } from "@/lib/rules/validation";
 import type { Conversation } from "@/types/domain";
 import { messagesApi } from "./api";
+import { demo } from "./demo";
 import { messageKeys } from "./hooks";
 
 /* -------------------------------------------------------------- Messages */
@@ -42,6 +43,7 @@ export const messageService = {
   /** Who can message whom (PRD §14). The profile's `canMessage` decides; the first message to
    *  someone who doesn't follow you arrives as a request (the API says so when it's sent). */
   canStart(memberId: string): "open" | "request" | "none" | "unavailable" {
+    if (isDemo()) return demo.canStart(memberId);
     const s = get();
     const m = s.members.find((x) => x.id === memberId);
     if (!m) return "none";
@@ -55,6 +57,7 @@ export const messageService = {
 
   /** POST /members/{handle}/messages: opens (or continues) the conversation. */
   async start(memberId: string, body: string, attachedPostId?: string): Promise<Result> {
+    if (isDemo()) return demoResult(demo.start(memberId, body, attachedPostId));
     const s = get();
     if (s.me.status === "unconfirmed") return fail(MSG.unconfirmed(s.me.email), "unconfirmed");
     const existing = s.conversations.find((c) => c.memberId === memberId && c.kind !== "support");
@@ -74,6 +77,7 @@ export const messageService = {
 
   /** POST /conversations/{id}/messages. Messages are never held. */
   async send(id: string, body: string, attachedPostId?: string): Promise<Result> {
+    if (isDemo()) return demoResult(demo.send(id, body, attachedPostId));
     const s = get();
     if (s.me.status === "unconfirmed") return fail(MSG.unconfirmed(s.me.email), "unconfirmed");
     const c = s.conversations.find((x) => x.id === id);
@@ -100,16 +104,19 @@ export const messageService = {
 
   /** POST /conversations/{id}/accept. */
   acceptRequest(id: string) {
+    if (isDemo()) return demoResult(demo.acceptRequest(id));
     patchConv(id, (c) => ({ ...c, request: undefined }));
     return quietly(() => messagesApi.accept(id));
   },
   /** DELETE /conversations/{id}: deleting a request is silent, the sender is never told. */
   deleteRequest(id: string) {
+    if (isDemo()) return demoResult(demo.deleteRequest(id));
     patchConv(id, () => null);
     return quietly(() => messagesApi.remove(id));
   },
   /** PUT /conversations/{id}/muted. */
   toggleMute(id: string) {
+    if (isDemo()) return demoResult(demo.toggleMute(id));
     const muted = !!get().conversations.find((c) => c.id === id)?.muted;
     patchConv(id, (c) => ({ ...c, muted: !muted }));
     if (isSupport(id)) return Promise.resolve(ok());
@@ -120,6 +127,7 @@ export const messageService = {
   },
   /** DELETE /conversations/{id}: gone for me; the other member keeps theirs. */
   deleteForMe(id: string) {
+    if (isDemo()) return demoResult(demo.deleteForMe(id));
     const support = isSupport(id);
     patchConv(id, () => null);
     if (support) return Promise.resolve(ok());
@@ -127,12 +135,14 @@ export const messageService = {
   },
   /** POST /conversations/{id}/read. */
   markRead(id: string) {
+    if (isDemo()) return demoResult(demo.markRead(id));
     patchConv(id, (c) => ({ ...c, unread: false }));
     if (isSupport(id)) return Promise.resolve(ok());
     return quietly(() => messagesApi.read(id));
   },
   /** PUT /messages/{id}: within 15 minutes of sending. */
   async editMessage(convId: string, msgId: string, body: string): Promise<Result> {
+    if (isDemo()) return demoResult(demo.editMessage(convId, msgId, body));
     patchConv(convId, (c) => ({
       ...c,
       messages: c.messages.map((m) => (m.id === msgId ? { ...m, body, edited: true } : m)),
@@ -150,6 +160,7 @@ export const messageService = {
   },
   /** DELETE /messages/{id}: within 15 minutes of sending. */
   deleteMessage(convId: string, msgId: string) {
+    if (isDemo()) return demoResult(demo.deleteMessage(convId, msgId));
     patchConv(convId, (c) => ({
       ...c,
       messages: c.messages.map((m) => (m.id === msgId ? { ...m, deleted: true, body: "" } : m)),

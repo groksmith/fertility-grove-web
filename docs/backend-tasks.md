@@ -5,7 +5,7 @@
 **How to hand back:** merge to `dev` and **regenerate `docs/api-handoff.md`** (the running API
 serves `swagger.json`). We pull both with `yarn sync:docs`; anything not in them reads as not done.
 
-The next new ask is **B13** / **O2**.
+The next new ask is **B21** / **O2**.
 
 Rules for this file: `.claude/skills/handoff-docs/SKILL.md`.
 
@@ -174,9 +174,11 @@ but no such line.
 **Ask:** add `whoFor` (up to 120 characters, set by admins) to `GetGroupViewModel`,
 `GroupListItemViewModel` and `VisitorGroupViewModel`.
 
-**Today:** the line is empty on group pages.
+**Today:** the "Who it's for" panel is hidden on group pages (member and public) while the line is
+empty.
 
-**FE follow-up when shipped:** map it in `src/lib/api/content.ts` (`toGroup`).
+**FE follow-up when shipped:** map it in `src/lib/api/content.ts` (`toGroup`); the panel shows again
+by itself.
 
 ## B12 — Profile photo upload
 
@@ -191,4 +193,107 @@ documented), `DELETE /api/v1/profile/me/photo`, and `photoUrl` wherever `avatarC
 
 **FE follow-up when shipped:** the upload control on onboarding screen 6 and Edit profile, and
 `photoUrl` in `src/lib/api/members.ts` and `Avatar`.
+
+## B13 — Sunlight on other members
+
+PRD §6 and §13: a member's profile shows their tree level and Sunlight, and member search rows show
+"@handle · level · Sunlight". `GetMemberProfileViewModel` and the `GET /members?q` items carry
+`treeLevel` but no `sunlight`.
+
+**Ask:** add `sunlight` (int) to `GetMemberProfileViewModel` and the member search item.
+
+**Today:** the Sunlight number is hidden on `/u/{handle}` and in People results; the level shows.
+
+**FE follow-up when shipped:** map it in `src/lib/api/members.ts` (`memberFromRef`) and
+`src/features/social/hooks.ts`.
+
+## B14 — What a matched mentor helps with, and their open places
+
+PRD §11 (mentors): each suggested mentor shows what they can help with and how many places are left
+("Room for 2 more"). `GET /matches/mentors` items have `bio` and `reason` only; the member profile's
+`mentor` block has `helpsWith` and `isTakingRequests` but no count.
+
+**Ask:** add `helpsWith` (option codes) and `openPlaces` (int) to the `GET /matches/mentors` items,
+and `openPlaces` to the profile's `mentor` block.
+
+**Today:** the "Helps with" chips show only once the mentor's profile has been opened, and "Room for
+N more" is hidden.
+
+**FE follow-up when shipped:** `src/features/mentors/hooks.ts` and `src/features/social/hooks.ts`
+(drop `placesUnknown`).
+
+## B15 — An article's next review date
+
+PRD §16: an article shows "Last reviewed … · Next review due …". The `Article` view model has
+`lastReviewedOn` only.
+
+**Ask:** add `nextReviewOn` (date) to the article view model (`GET /learn/articles/{id}`).
+
+**Today:** "Next review due" is hidden.
+
+**FE follow-up when shipped:** map it in `src/lib/api/articles.ts` (`toArticle`).
+
+## B16 — Votes and sharing on a visitor's post
+
+PRD §10 (guest browsing): a public post shows its votes and, when the author allowed it, the share
+link. `VisitorPostViewModel` has `score` only and no `allowSharingOutside`.
+
+**Ask:** add `allowSharingOutside` to `VisitorPostViewModel` (and `upvotes` / `downvotes` if the
+public page should show them apart).
+
+**Today:** the score shows; sharing is always offered on public posts.
+
+**FE follow-up when shipped:** `src/features/posts/public.ts` (`toPublicPost`).
+
+## B17 — Posts this week on the groups list
+
+PRD §8: each group in the list shows "N members · N posts this week". `GroupListItemViewModel` has
+`memberCount` but no weekly count (`GetGroupViewModel` has it).
+
+**Ask:** add `postsThisWeek` to `GroupListItemViewModel` and `VisitorGroupViewModel`.
+
+**Today:** the weekly count is hidden wherever the answer doesn't carry it.
+
+**FE follow-up when shipped:** none beyond the mapping in `src/lib/api/content.ts`; the count shows
+again by itself.
+
+## B18 — Who a notification is from
+
+PRD §15: notifications show the avatar of the member who acted. `NotificationViewModel` names the
+actor by handle but sends no avatar.
+
+**Ask:** add `actorAvatarCode` (and the avatar colour from B1) to `NotificationViewModel`.
+
+**Today:** the row shows the notification's kind icon unless that member is already cached.
+
+**FE follow-up when shipped:** `src/features/notifications/hooks.ts` (`toNotification`).
+
+## B19 — Option lists for visitors
+
+Learn is open to visitors (PRD §16), and its `?diagnosis=` / `?topic=` filters take option codes, but
+`GET /onboarding/options` needs a signed-in member (api-handoff "Option lists and codes", Open
+Questions).
+
+**Ask:** a public `GET /api/v1/public/options` (the same `lists`, no communities), or labels with
+codes on the Learn answers.
+
+**Today:** signed-out Learn sends a code worked out from the label (`snake_case`), which matches the
+seeded codes but isn't guaranteed.
+
+**FE follow-up when shipped:** load it in `src/features/learn/hooks.ts` for visitors.
+
+## B20 — Launch content on staging
+
+The Learn library (`GET /learn/articles`) answers with no articles on staging, so the library, its
+article pages and the "Read first" block on onboarding have nothing to show; groups and success
+stories may be empty too.
+
+**Ask:** seed the launch content on staging: the six reviewed diagnosis articles (PRD §16) and the
+launch groups (PRD §8).
+
+**Today:** while a list answers empty, the web app shows the prototype's sample articles, groups and
+stories, marked "Sample" and read-only (`src/lib/api/samples.ts`). They disappear as soon as the API
+returns real items.
+
+**FE follow-up when shipped:** none; once launch content is live everywhere, delete the samples.
 

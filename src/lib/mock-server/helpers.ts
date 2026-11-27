@@ -59,3 +59,12 @@ export function sunlight(s: State, amount: number, label: string): State {
   }
   return next;
 }
+
+/** What a demo (prototype) action answers, as today's services do: its own `Result`, or ok when it
+    answered nothing. Promises are awaited first. */
+export function demoResult(v: unknown): Result;
+export function demoResult(v: Promise<unknown>): Promise<Result>;
+export function demoResult(v: unknown): Result | Promise<Result> {
+  if (v instanceof Promise) return v.then((x) => demoResult(x));
+  return v && typeof v === "object" && "ok" in v ? (v as Result) : { ok: true };
+}

@@ -9,6 +9,7 @@ import { AuthFrame } from "@/components/common/AuthFrame";
 import { FormField } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { authService, resetPasswordSchema } from "@/features/auth";
+import { useStore } from "@/lib/mock-server";
 import { MSG } from "@/lib/rules/validation";
 
 export default function ResetPasswordPage() {
@@ -19,7 +20,11 @@ export default function ResetPasswordPage() {
     const q = new URLSearchParams(window.location.search);
     setLink({ email: q.get("email") ?? "", token: q.get("token") ?? q.get("code") ?? "" });
   }, []);
-  const [expired, setExpired] = useState(false);
+  // The offline demo has no token; its "Email links expired" tool decides instead.
+  const demo = useStore((s) => s.demo === true);
+  const demoExpired = useStore((s) => s.linkExpired);
+  const [linkExpired, setExpired] = useState(false);
+  const expired = linkExpired || (demo && demoExpired);
   // Checked on submit only; messages stay until the next submit, and focus stays put.
   const form = useForm({
     resolver: zodResolver(resetPasswordSchema),
@@ -60,8 +65,12 @@ export default function ResetPasswordPage() {
         noValidate
         className="space-y-5"
         onSubmit={form.handleSubmit(async ({ password, confirm }) => {
-          if (!link?.token) return setExpired(true);
-          const r = await authService.resetPassword(link, password, confirm);
+          if (!link?.token && !demo) return setExpired(true);
+          const r = await authService.resetPassword(
+            link ?? { email: "", token: "" },
+            password,
+            confirm,
+          );
           if (r.ok) setDone(true);
           else {
             for (const [name, message] of Object.entries(r.errs))

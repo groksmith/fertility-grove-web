@@ -6,10 +6,11 @@ import { authService, commands, loadSession } from "@/features/auth";
 import { refresh } from "@/lib/api/query-client";
 import { attempt, fail, failure, ok, type Result } from "@/lib/api/result";
 import { httpClient } from "@/lib/http";
-import { get, type Me, set } from "@/lib/mock-server";
+import { demoResult, get, isDemo, type Me, set } from "@/lib/mock-server";
 import { notice } from "@/lib/notice";
 import { checks } from "@/lib/rules/validation";
 import type { MessagePolicy } from "@/types/domain";
+import { demo } from "./demo";
 
 type Group = "publicProfile" | "aboutYou" | "health" | "lookingFor" | "community" | "settings";
 
@@ -101,14 +102,17 @@ let exportId: string | null = null;
 
 export const settingsService = {
   update(patch: Partial<Me>): Promise<Result> {
+    if (isDemo()) return Promise.resolve(demoResult(demo.update(patch)));
     return save(patch);
   },
   setMessagePolicy(p: MessagePolicy): Promise<Result> {
+    if (isDemo()) return Promise.resolve(demoResult(demo.setMessagePolicy(p)));
     return save({ messagePolicy: p });
   },
 
   /** PUT /profile/me/handle. Once every 30 days; the API says when the next change opens. */
   async changeHandle(next: string): Promise<Result> {
+    if (isDemo()) return demoResult(demo.changeHandle(next));
     const h = next.trim();
     if (h === get().me.handle) return ok();
     const e = checks.handle(h);
@@ -120,6 +124,7 @@ export const settingsService = {
 
   /** DELETE /profile/me/health-consent: withdrawing deletes the screen 1–2 health answers. */
   async withdrawConsent(): Promise<Result> {
+    if (isDemo()) return demoResult(demo.withdrawConsent());
     const r = await attempt(() => httpClient.delete("/profile/me/health-consent"));
     if (!r.ok) {
       notice(r.error);
@@ -145,6 +150,7 @@ export const settingsService = {
   },
   /** POST /profile/me/health-consent. */
   async giveConsent(): Promise<Result> {
+    if (isDemo()) return demoResult(demo.giveConsent());
     set((s) => ({ ...s, useProfileAnswers: true, me: { ...s.me, healthConsent: true } }));
     const r = await attempt(() => httpClient.post("/profile/me/health-consent"));
     if (!r.ok) {
@@ -164,6 +170,7 @@ export const settingsService = {
   },
   /** POST /profile/me/data-exports. Idempotent while one is being prepared. */
   async requestExport(): Promise<Result> {
+    if (isDemo()) return demoResult(demo.requestExport());
     try {
       const e = await httpClient.post<ExportDto>("/profile/me/data-exports");
       exportId = e.id;
@@ -177,6 +184,7 @@ export const settingsService = {
   },
   /** POST /profile/me/data-exports/{id}/download with the password: the zip, saved by the browser. */
   async downloadExport(password: string): Promise<Result> {
+    if (isDemo()) return ok();
     if (!exportId) await settingsService.exportStatus();
     if (!exportId) return fail("This download is no longer available.");
     try {
@@ -198,6 +206,7 @@ export const settingsService = {
 
   /** POST /auth/account/deletion: signed out everywhere; signing in within 14 days restores. */
   async deleteAccount(deletePosts: boolean): Promise<Result> {
+    if (isDemo()) return demoResult(demo.deleteAccount(deletePosts));
     const r = await authService.requestDeletion(deletePosts);
     if (!r.ok) {
       notice(r.error);
@@ -211,13 +220,16 @@ export const settingsService = {
   },
   /** There is no restore call: signing in restores. This clears the notice and goes to sign-in. */
   restoreAccount() {
+    if (isDemo()) return demoResult(demo.restoreAccount());
     set((s) => ({ ...s, deletion: undefined }));
   },
   acknowledgeLevelUp() {
+    if (isDemo()) return demoResult(demo.acknowledgeLevelUp());
     set((s) => ({ ...s, pendingLevelUp: undefined }));
   },
   /** "Hide for 30 days": POST /profile/me/completion-card/dismiss. */
   async dismissProfileCard(): Promise<Result> {
+    if (isDemo()) return demoResult(demo.dismissProfileCard());
     set((s) => ({
       ...s,
       me: { ...s.me, profileCardHiddenUntil: Date.now() + 30 * 24 * 60 * 60 * 1000 },
@@ -226,6 +238,7 @@ export const settingsService = {
   },
   /** Suspension appeals: TODO(api) — no moderation endpoints yet (M4). */
   appeal() {
+    if (isDemo()) return demoResult(demo.appeal());
     set((s) => ({ ...s, suspension: s.suspension && { ...s.suspension, appealed: true } }));
   },
 };

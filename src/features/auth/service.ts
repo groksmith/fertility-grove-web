@@ -5,10 +5,11 @@
 import { attempt, failure, ok, type Result } from "@/lib/api/result";
 import { GOOGLE_UNAVAILABLE, googleIdToken } from "@/lib/google";
 import { ApiRequestError } from "@/lib/http";
-import { get, set } from "@/lib/mock-server";
+import { demoResult, get, isDemo, set } from "@/lib/mock-server";
 import { notice } from "@/lib/notice";
 import { normalizeEmail } from "@/lib/rules/validation";
 import { authApi, type LoginResponse } from "./api";
+import { demo } from "./demo";
 import { endSession, loadSession, startSession } from "./session";
 
 type SignUpResult =
@@ -43,6 +44,10 @@ export const authService = {
     terms: boolean;
     google?: boolean;
   }): Promise<SignUpResult> {
+    if (isDemo()) {
+      const r = demoResult(demo.signUp(input));
+      return r.ok ? { ok: true, duplicate: false } : r;
+    }
     const invite = get().pendingInvite;
     try {
       if (input.google) {
@@ -80,6 +85,7 @@ export const authService = {
 
   /** POST /auth/login. A sign-in within 14 days of deleting also restores the account. */
   signIn(email: string, password: string, keep: boolean): Promise<Result> {
+    if (isDemo()) return Promise.resolve(demoResult(demo.signIn(email, password, keep)));
     return attempt(async () => {
       const r = await authApi.login({ email: normalizeEmail(email), password, keepSignedIn: keep });
       await signedIn(r);
@@ -88,6 +94,7 @@ export const authService = {
 
   /** POST /auth/google for an existing account (sign-in screen). */
   async signInWithGoogle(keep: boolean): Promise<Result> {
+    if (isDemo()) return demoResult(demo.signInWithGoogle(keep));
     let idToken: string;
     try {
       idToken = await googleIdToken();
@@ -110,6 +117,8 @@ export const authService = {
 
   /** POST /auth/logout, allowed during onboarding. Local state goes whatever the answer. */
   async signOut() {
+    // Signing out of the offline demo leaves it: the next sign-in is a real one.
+    if (isDemo()) return endSession();
     try {
       await authApi.logout();
     } catch {
@@ -124,6 +133,10 @@ export const authService = {
 
   /** POST /auth/sign-out-everywhere: every session on every device ends, this one included. */
   async signOutEverywhere(): Promise<Result> {
+    if (isDemo()) {
+      endSession();
+      return ok();
+    }
     const r = await attempt(() => authApi.signOutEverywhere());
     if (r.ok) endSession();
     return r;
@@ -131,6 +144,7 @@ export const authService = {
 
   /** POST /auth/verify-email with the link's token. */
   async confirmEmail(token: string): Promise<Result> {
+    if (isDemo()) return demo.confirmEmail();
     if (!token) return { ok: false, error: "" };
     const r = await attempt(() => authApi.verifyEmail(token));
     if (r.ok) await loadSession();
@@ -139,6 +153,10 @@ export const authService = {
 
   /** POST /auth/resend-verification. The same answer whether or not the email exists. */
   resendLink(email?: string): Promise<Result> {
+    if (isDemo()) {
+      demo.resendLink();
+      return Promise.resolve(ok());
+    }
     const to = email || get().pendingEmail || get().me.email;
     if (!to) return Promise.resolve(ok());
     return attempt(() => authApi.resendVerification(to));
@@ -146,6 +164,7 @@ export const authService = {
 
   /** POST /auth/forgot-password. The same message whether or not an account exists. */
   forgotPassword(email: string): Promise<Result> {
+    if (isDemo()) return Promise.resolve(ok());
     return attempt(() => authApi.forgotPassword(normalizeEmail(email)));
   },
 
@@ -155,6 +174,10 @@ export const authService = {
     pw: string,
     confirm: string,
   ): Promise<{ ok: true } | { ok: false; error: string; errs: Record<string, string> }> {
+    if (isDemo()) {
+      const r = demo.resetPassword(pw, confirm);
+      return r.ok ? r : { ...r, errs: r.errs };
+    }
     try {
       await authApi.resetPassword({
         email: link.email,
@@ -177,6 +200,7 @@ export const authService = {
 
   /** POST /auth/terms with the version the member was shown. */
   async acceptTerms(version: string): Promise<Result> {
+    if (isDemo()) return ok();
     const r = await attempt(() => authApi.acceptTerms(version));
     if (r.ok) await loadSession();
     return r;
@@ -184,6 +208,7 @@ export const authService = {
 
   /** Remember the invite a link carried, so sign-up sends it (PRD §24 beta). */
   arriveWithInvite(kind: "beta" | "partner", value: string, inviterFirstName?: string) {
+    if (isDemo()) return demo.arriveWithInvite(kind);
     set((s) => ({
       ...s,
       pendingInvite:
@@ -196,11 +221,16 @@ export const authService = {
 
   /** POST /auth/sign-up-waitlist: kept while sign-ups are paused or invite-only. */
   joinWaitlist(email: string): Promise<Result> {
+    if (isDemo()) return Promise.resolve(demoResult(demo.joinWaitlist(email)));
     return attempt(() => authApi.waitlist(normalizeEmail(email)));
   },
 
   /** PUT /auth/account: a new sign-in email, confirmed by a link sent to it. */
   async changeEmail(email: string, currentPassword: string): Promise<Result> {
+    if (isDemo()) {
+      set((s) => ({ ...s, me: { ...s.me, email: normalizeEmail(email) } }));
+      return ok();
+    }
     const r = await attempt(() => authApi.changeEmail(normalizeEmail(email), currentPassword));
     if (r.ok) await loadSession();
     return r;

@@ -87,8 +87,13 @@ function Results() {
                   <div className="min-w-0">
                     <Name member={m} link={false} />
                     <p className="text-[13px] text-muted">
-                      @{m.handle} · {m.level} ·{" "}
-                      <span className="tabular">{m.sunlight.toLocaleString()}</span> Sunlight
+                      @{m.handle} · {m.level}
+                      {m.sunlight !== undefined && (
+                        <>
+                          {" "}
+                          · <span className="tabular">{m.sunlight.toLocaleString()}</span> Sunlight
+                        </>
+                      )}
                     </p>
                   </div>
                 </Link>

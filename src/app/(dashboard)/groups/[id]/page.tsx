@@ -13,7 +13,7 @@ import { useState } from "react";
 import { GroupCover, groupHue } from "@/components/art/Brand";
 import { Spot } from "@/components/art/Scenes";
 import { PostCard } from "@/components/common/PostCard";
-import { Avatar, EmptyState, MoreOnScroll } from "@/components/shared";
+import { Avatar, EmptyState, MoreOnScroll, SampleTag } from "@/components/shared";
 import { Button, LinkButton } from "@/components/ui/button";
 import { ChipSelect } from "@/components/ui/chip-select";
 import { Menu } from "@/components/ui/dropdown-menu";
@@ -21,11 +21,18 @@ import { Panel } from "@/components/ui/panel";
 import { Segmented } from "@/components/ui/segmented";
 import { toast } from "@/components/ui/toast";
 import { POST_TYPES } from "@/config/options";
-import { groupMatches, groupService, useGroup, useGroupMatches } from "@/features/groups";
+import {
+  groupMatches,
+  groupService,
+  useGroup,
+  useGroupMatches,
+  useGroups,
+} from "@/features/groups";
 import { articleCover, readingFor } from "@/features/learn";
 import { commentCount, score, useGroupPosts, visiblePosts } from "@/features/posts";
+import { isApiId } from "@/lib/api/samples";
 import { useStore } from "@/lib/mock-server";
-import type { PostType } from "@/types/domain";
+import type { Member, PostType } from "@/types/domain";
 
 type Sort = "newest" | "top" | "discussed";
 
@@ -37,11 +44,13 @@ export default function GroupPage() {
   const [types, setTypes] = useState<PostType[]>([]);
   // GET /groups/{id} and its posts, into the cache this page reads.
   const groupQuery = useGroup(id);
+  // A sample group (while there are no real ones) comes with the groups list.
+  const list = useGroups(!isApiId(id));
   const postPages = useGroupPosts(id, sort, groupQuery.data?.canReadPosts !== false);
   useGroupMatches("GroupsPage");
   const group = s.groups.find((g) => g.id === id);
 
-  if (!group && groupQuery.isPending) return null;
+  if (!group && (isApiId(id) ? groupQuery.isPending : list.isPending)) return null;
   if (!group || group.status === "draft" || groupQuery.data === null) {
     return (
       <EmptyState
@@ -80,26 +89,38 @@ export default function GroupPage() {
   // poster first, up to 5, never padded with other members. Never you, anyone
   // either of you blocked, suspended or departing members, or the Support
   // account. A Members-only group you haven't joined shows none.
-  // TODO(api): the group endpoint will return these; this derives them from the mock.
+  // GET /groups/{id} sends them as `posterAvatars` (avatar and colour only, no names); a group
+  // without that answer (sample data) works them out from its cached posts.
+  const posters = group.posterAvatars?.map((a, i) => ({
+    id: `poster-${group.id}-${i}`,
+    firstName: "",
+    handle: "",
+    showRealName: false,
+    avatarHue: a.hue,
+    avatar: a.preset,
+    badges: [] as Member["badges"],
+  }));
   const faces = locked
     ? []
-    : [
-        ...new Set(
-          s.posts
-            .filter((p) => p.groupId === group.id && p.status === "published")
-            .sort((a, b) => a.minutesAgo - b.minutesAgo)
-            .map((p) => p.authorId),
-        ),
-      ]
-        .flatMap((a) => s.members.find((m) => m.id === a) ?? [])
-        .filter(
-          (m) =>
-            !m.unavailable &&
-            !m.badges.includes("team") &&
-            !s.blocked.includes(m.id) &&
-            !m.blocks?.includes("me"),
-        )
-        .slice(0, 5);
+    : (
+        posters ??
+        [
+          ...new Set(
+            s.posts
+              .filter((p) => p.groupId === group.id && p.status === "published")
+              .sort((a, b) => a.minutesAgo - b.minutesAgo)
+              .map((p) => p.authorId),
+          ),
+        ]
+          .flatMap((a) => s.members.find((m) => m.id === a) ?? [])
+          .filter(
+            (m) =>
+              !m.unavailable &&
+              !m.badges.includes("team") &&
+              !s.blocked.includes(m.id) &&
+              !m.blocks?.includes("me"),
+          )
+      ).slice(0, 5);
   // Filters combine: a post shows if it is one of the picked types and has any of the picked tags.
   let posts = groupPosts.filter(
     (p) =>
@@ -130,6 +151,7 @@ export default function GroupPage() {
         <GroupCover group={group} size={104} />
         <div className="min-w-0 flex-1 basis-[220px]">
           <h1 className="serif text-[28px] leading-[1.1] lg:text-[32px]">{group.name}</h1>
+          {group.sample && <SampleTag className="mt-2" />}
           <p className="mt-2 max-w-[60ch] text-[15px] leading-relaxed text-ink-soft">
             {group.description}
           </p>
@@ -149,9 +171,14 @@ export default function GroupPage() {
                 {group.type} group
               </span>
               ·<strong className="font-semibold text-ink">{group.members.toLocaleString()}</strong>{" "}
-              {group.members === 1 ? "member" : "members"} ·
-              <strong className="font-semibold text-ink">{group.postsThisWeek}</strong>{" "}
-              {group.postsThisWeek === 1 ? "post" : "posts"} this week
+              {group.members === 1 ? "member" : "members"}
+              {group.postsThisWeek !== undefined && (
+                <>
+                  {" "}
+                  ·<strong className="font-semibold text-ink">{group.postsThisWeek}</strong>{" "}
+                  {group.postsThisWeek === 1 ? "post" : "posts"} this week
+                </>
+              )}
               {group.readAccess === "members-only" && (
                 <span className="inline-flex items-center gap-1">
                   · <Lock size={12} aria-hidden /> Members-only
@@ -321,21 +348,24 @@ export default function GroupPage() {
             )}
           </div>
           <aside className="space-y-4">
-            <Panel
-              className="relative overflow-hidden border-transparent p-5"
-              style={{ background: `var(--${hue}-50)` }}
-            >
-              <Image
-                src="/assets/brand/cozy/e-branch-side.webp"
-                alt=""
-                aria-hidden
-                width={104}
-                height={58}
-                className="pointer-events-none absolute -top-2 -right-4"
-              />
-              <h2 className="text-[16px] font-semibold">Who it&apos;s for</h2>
-              <p className="mt-1.5 text-[14px] leading-relaxed text-ink-soft">{group.whoFor}</p>
-            </Panel>
+            {/* TODO(api): GET /groups/{id} has no "who it's for" yet (B11); the panel waits for it. */}
+            {group.whoFor && (
+              <Panel
+                className="relative overflow-hidden border-transparent p-5"
+                style={{ background: `var(--${hue}-50)` }}
+              >
+                <Image
+                  src="/assets/brand/cozy/e-branch-side.webp"
+                  alt=""
+                  aria-hidden
+                  width={104}
+                  height={58}
+                  className="pointer-events-none absolute -top-2 -right-4"
+                />
+                <h2 className="text-[16px] font-semibold">Who it&apos;s for</h2>
+                <p className="mt-1.5 text-[14px] leading-relaxed text-ink-soft">{group.whoFor}</p>
+              </Panel>
+            )}
             <Panel className="p-5">
               <h2 className="text-[16px] font-semibold">Group rules</h2>
               <p className="mt-1.5 text-[14px] leading-relaxed text-ink-soft">

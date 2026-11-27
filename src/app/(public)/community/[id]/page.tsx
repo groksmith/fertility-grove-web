@@ -61,17 +61,28 @@ export default function PublicGroupPage() {
         <GroupCover group={group} size={64} />
         <p className="tabular text-[15px] text-ink-soft">
           {group.type} group ·{" "}
-          <strong className="font-semibold text-ink">{plural(group.members, "member")}</strong> ·{" "}
-          <strong className="font-semibold text-ink">{plural(group.postsThisWeek, "post")}</strong>{" "}
-          this week
+          <strong className="font-semibold text-ink">{plural(group.members, "member")}</strong>
+          {group.postsThisWeek !== undefined && (
+            <>
+              {" "}
+              ·{" "}
+              <strong className="font-semibold text-ink">
+                {plural(group.postsThisWeek, "post")}
+              </strong>{" "}
+              this week
+            </>
+          )}
         </p>
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Panel className="p-5">
-          <h2 className="text-[16px] font-semibold">Who it&apos;s for</h2>
-          <p className="mt-1.5 text-[14px] leading-relaxed text-ink-soft">{group.whoFor}</p>
-        </Panel>
+        {/* TODO(api): no "who it's for" on the public group yet (B11). */}
+        {group.whoFor && (
+          <Panel className="p-5">
+            <h2 className="text-[16px] font-semibold">Who it&apos;s for</h2>
+            <p className="mt-1.5 text-[14px] leading-relaxed text-ink-soft">{group.whoFor}</p>
+          </Panel>
+        )}
         <Panel className="p-5">
           <h2 className="text-[16px] font-semibold">Group rules</h2>
           <p className="mt-1.5 text-[14px] leading-relaxed text-ink-soft">

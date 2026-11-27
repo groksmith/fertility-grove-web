@@ -6,11 +6,13 @@ import { apiPostType, apiSource } from "@/lib/api/enums";
 import { codesOf } from "@/lib/api/options";
 import { refresh } from "@/lib/api/query-client";
 import { attempt, crisisOf, fail, failure, ok, type Result } from "@/lib/api/result";
-import { get, set } from "@/lib/mock-server";
+import { isApiId, sampleOnly } from "@/lib/api/samples";
+import { demoResult, get, isDemo, set } from "@/lib/mock-server";
 import { notice } from "@/lib/notice";
 import { MSG } from "@/lib/rules/validation";
 import type { Post, Source, Vote } from "@/types/domain";
 import { postsApi } from "./api";
+import { demo } from "./demo";
 import { postKeys } from "./hooks";
 import type { PostInput } from "./schema";
 
@@ -39,6 +41,8 @@ function shiftVotes<T extends { myVote: Vote; up: number; down: number }>(x: T, 
 export const postService = {
   /** POST /groups/{id}/posts. */
   async create(p: PostInput): Promise<Result> {
+    if (isDemo()) return demoResult(demo.create(p));
+    if (p.groupId && !isApiId(p.groupId)) return sampleOnly("group");
     const blocked = gate(p.groupId, "post in it");
     if (blocked) return blocked;
     try {
@@ -67,6 +71,8 @@ export const postService = {
     id: string,
     patch: Partial<Pick<Post, "title" | "body" | "allowSharing" | "showToVisitors">>,
   ): Promise<Result> {
+    if (isDemo()) return demoResult(demo.edit(id, patch));
+    if (!isApiId(id)) return sampleOnly("post");
     const post = get().posts.find((p) => p.id === id);
     if (!post) return fail("This post isn't available.");
     const next = { ...post, ...patch };
@@ -106,11 +112,14 @@ export const postService = {
 
   /** Appeal a moderator's removal (PRD §19). TODO(api): no moderation endpoints yet (M4). */
   appeal(id: string) {
+    if (isDemo()) return demoResult(demo.appeal(id));
     set((s) => ({ ...s, posts: s.posts.map((p) => (p.id === id ? { ...p, appealed: true } : p)) }));
   },
 
   /** DELETE /posts/{id}. */
   async remove(id: string): Promise<Result> {
+    if (isDemo()) return demoResult(demo.remove(id));
+    if (!isApiId(id)) return sampleOnly("post");
     const r = await attempt(() => postsApi.remove(id));
     if (!r.ok) {
       notice(r.error);
@@ -127,6 +136,8 @@ export const postService = {
 
   /** PUT /posts/{id}/vote: the same direction again removes the vote. */
   async vote(id: string, v: Vote): Promise<Result> {
+    if (isDemo()) return demoResult(demo.vote(id, v));
+    if (!isApiId(id)) return sampleOnly("post");
     const s = get();
     const post = s.posts.find((p) => p.id === id);
     if (!post) return fail("This post isn't available.");
@@ -147,6 +158,8 @@ export const postService = {
 
   /** PUT /posts/{id}/saved. Posts and success stories alike. */
   async toggleSave(id: string): Promise<Result> {
+    if (isDemo()) return demoResult(demo.toggleSave(id));
+    if (!isApiId(id)) return sampleOnly("post");
     const s = get();
     const saved = !(
       s.posts.find((p) => p.id === id)?.saved ?? s.stories.find((x) => x.id === id)?.saved
@@ -176,6 +189,8 @@ export const postService = {
     body: string,
     opts: { parentId?: string; mention?: string; source?: Source } = {},
   ): Promise<Result> {
+    if (isDemo()) return demoResult(demo.comment(postId, body, opts));
+    if (!isApiId(postId)) return sampleOnly("post");
     const post = get().posts.find((p) => p.id === postId);
     const blocked = gate(post?.groupId || undefined, "comment");
     if (blocked) return blocked;
@@ -196,6 +211,8 @@ export const postService = {
 
   /** PUT /comments/{id}/vote. */
   async voteComment(id: string, v: Vote): Promise<Result> {
+    if (isDemo()) return demoResult(demo.voteComment(id, v));
+    if (!isApiId(id)) return sampleOnly("post");
     const c = get().comments.find((x) => x.id === id);
     if (!c) return fail("This comment isn't available.");
     if (c.authorId === "me") return fail("You can't vote on your own comment.");
@@ -219,6 +236,7 @@ export const postService = {
 
   /** PUT /comments/{id}. */
   async editComment(id: string, body: string): Promise<Result> {
+    if (isDemo()) return demoResult(demo.editComment(id, body));
     const c = get().comments.find((x) => x.id === id);
     try {
       const sent = await postsApi.editComment(id, {
@@ -244,6 +262,7 @@ export const postService = {
 
   /** TODO(api): no moderation endpoints yet (M4). */
   appealComment(id: string) {
+    if (isDemo()) return demoResult(demo.appealComment(id));
     set((s) => ({
       ...s,
       comments: s.comments.map((c) => (c.id === id ? { ...c, appealed: true } : c)),
@@ -252,6 +271,7 @@ export const postService = {
 
   /** DELETE /comments/{id}. */
   async removeComment(id: string): Promise<Result> {
+    if (isDemo()) return demoResult(demo.removeComment(id));
     const r = await attempt(() => postsApi.removeComment(id));
     if (!r.ok) {
       notice(r.error);
